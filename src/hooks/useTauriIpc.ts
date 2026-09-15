@@ -43,9 +43,33 @@ export interface TerminalScreen {
  * Current-screen vt100 snapshot. `null` = the terminal has no screen.
  * Paint it via `term.resize(cols, rows)` → `term.reset()` → `term.write(data)`;
  * writing it at any other grid size leaves ghost cells.
+ *
+ * `get_screen` arrived with protocol version 2. A daemon that predates it
+ * treats the request as invalid, logs it and never answers — and the IPC
+ * request has no timeout of its own, so a plain await would never settle and
+ * the pane would sit blank (live output only) with no error. The version
+ * banner asks the user to restart the daemon; this timeout makes the
+ * un-restarted case degrade to the caller's raw-buffer fallback instead of
+ * hanging forever.
  */
-export async function getTerminalScreen(id: string): Promise<TerminalScreen | null> {
-  return invoke("get_terminal_screen", { id });
+export async function getTerminalScreen(
+  id: string,
+  timeoutMs = 3000
+): Promise<TerminalScreen | null> {
+  let timer: number | undefined;
+  try {
+    return await Promise.race([
+      invoke<TerminalScreen | null>("get_terminal_screen", { id }),
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(
+          () => reject(new Error("get_terminal_screen timed out")),
+          timeoutMs
+        );
+      }),
+    ]);
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 export async function listDir(path: string): Promise<FileEntry[]> {

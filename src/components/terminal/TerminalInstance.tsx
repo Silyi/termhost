@@ -51,6 +51,11 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
     // The ResizeObserver's first callback is the mount observation (the layout
     // settling), not the user resizing anything — see the observer below.
     let firstResizeObs = true;
+    // Most recent size another client pushed at us over `pty-resize-<id>`. The
+    // follow listener is registered before the attach paint's round trips, so a
+    // resize can land mid-paint and be undone by the paint's own `term.resize`;
+    // remembering it lets the paint re-apply it (see the attach branch).
+    let followedSize: { cols: number; rows: number } | null = null;
 
     const settings = useSettingsStore.getState();
     const term = new Terminal({
@@ -310,8 +315,13 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
         resizeUnlisten = await listen<{ cols: number; rows: number }>(`pty-resize-${id}`, (event) => {
           if (killed) return;
           const { cols, rows } = event.payload;
-          if (cols > 0 && rows > 0 && (term.cols !== cols || term.rows !== rows)) {
-            try { term.resize(cols, rows); } catch {}
+          if (cols > 0 && rows > 0) {
+            // Record it even when the attach paint later overwrites the resize —
+            // the paint re-applies it once it has finished.
+            followedSize = { cols, rows };
+            if (term.cols !== cols || term.rows !== rows) {
+              try { term.resize(cols, rows); } catch {}
+            }
           }
         });
 
@@ -329,7 +339,13 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
           let painted = false;
           try {
             const screen = await getTerminalScreen(id);
-            if (screen && screen.data) {
+            // `screen !== null` is the test, NOT `screen.data` — an empty
+            // string is a legitimate snapshot (a blank screen) and painting it
+            // on the native grid is the correct blank repaint. Treating it as
+            // "no screen" would fall into the raw-replay fallback, whose
+            // history-replay-at-container-size combination is exactly what
+            // produces the ghost cells.
+            if (screen) {
               el.style.visibility = "hidden";
               try {
                 // Paint at the snapshot's NATIVE size — a mismatch (snapshot
@@ -342,6 +358,15 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
                 await new Promise<void>((resolve) => {
                   term.write(screen.data, resolve);
                 });
+                // A `pty-resize-<id>` that arrived during these round trips (the
+                // follow listener is registered before them) was overwritten by
+                // the resize above, which leaves xterm on the snapshot grid while
+                // the PTY is already resized and locked to a different one — and
+                // nothing corrects that until an unrelated layout/focus/settings
+                // event. Re-apply the last size we were told to follow.
+                if (followedSize && (followedSize.cols !== term.cols || followedSize.rows !== term.rows)) {
+                  try { term.resize(followedSize.cols, followedSize.rows); } catch {}
+                }
               } finally {
                 el.style.visibility = "";
               }

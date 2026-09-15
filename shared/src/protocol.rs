@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Bump on every breaking change to DaemonRequest/DaemonResponse.
 /// The app compares the daemon's version (returned in Pong) against its own
 /// and surfaces a mismatch so the user can restart the outdated daemon.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 // --- Shared types ---
 
