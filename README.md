@@ -130,7 +130,7 @@ viachq's.
 Prerequisites: Windows 10/11, [Node.js](https://nodejs.org) ≥ 20, [Rust](https://rustup.rs) stable.
 
 ```powershell
-git clone https://github.com/YOUR-GITHUB-USERNAME/termhost   # ← this fork; upstream is rviach/termhost
+git clone https://github.com/Silyi/termhost   # ← this fork; upstream is rviach/termhost
 cd termhost
 npm install
 npm run dev          # dev build: Tauri window + vite dev server
