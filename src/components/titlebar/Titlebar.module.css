@@ -190,9 +190,7 @@
 }
 
 /* Visible Chinese labels next to the icons (2 CJK chars max) */
-.homeBtn span,
-.newTab span,
-.btn span {
+.btnLabel {
   margin-left: 4px;
   font-size: 11px;
 }

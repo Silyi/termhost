@@ -69,7 +69,7 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
         </svg>
-        <span>主页</span>
+        <span className={s.btnLabel}>主页</span>
       </button>
       <div className={s.tabs}>
         {workspaces.map((ws, idx) => {
@@ -120,7 +120,7 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M6 2v8M2 6h8" />
           </svg>
-          <span>新建</span>
+          <span className={s.btnLabel}>新建</span>
         </button>
       </div>
       <div className={s.drag} data-tauri-drag-region />
@@ -135,7 +135,7 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
             <line x1="8" y1="21" x2="16" y2="21" />
             <line x1="12" y1="17" x2="12" y2="21" />
           </svg>
-          <span>终端</span>
+          <span className={s.btnLabel}>终端</span>
         </button>
         <VoiceInput />
         <button
@@ -147,7 +147,7 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <line x1="15" y1="3" x2="15" y2="21" />
           </svg>
-          <span>面板</span>
+          <span className={s.btnLabel}>面板</span>
         </button>
       </div>
     </div>

@@ -83,7 +83,7 @@ export default function VoiceInput() {
           <rect x="9" y="2" width="6" height="11" rx="3" />
           <path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M8 22h8" />
         </svg>
-        <span>语音</span>
+        <span className={s.btnLabel}>语音</span>
         {listening && (
           <span
             style={{
