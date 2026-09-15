@@ -287,7 +287,11 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
             None
         }
         PtyHostRequest::Resize { seq, id, cols, rows } => {
-            match sh.pty.lock().unwrap().get_master(&id) {
+            // 先把 master 取到局部，让 pty 的 guard 在进入 match 前就释放 —— 否则 match 的
+            // scrutinee 临时量会活到整个 arm 结束，于是"持 pty 锁去取 screen 锁"，
+            // 违背 list_terminals 里写明的加锁顺序约定。
+            let master = sh.pty.lock().unwrap().get_master(&id);
+            match master {
                 Ok(m) => {
                     let r = m.lock().unwrap().resize(portable_pty::PtySize {
                         rows, cols, pixel_width: 0, pixel_height: 0,
@@ -305,8 +309,10 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
         }
         PtyHostRequest::LockSize { seq, id, cols, rows } => {
             sh.locks.lock().unwrap().insert(id.clone(), (cols, rows));
-            // 立刻把 PTY 也对齐到锁定尺寸
-            if let Ok(m) = sh.pty.lock().unwrap().get_master(&id) {
+            // 立刻把 PTY 也对齐到锁定尺寸。同样先取出 master 再进 if let，
+            // 避免 pty guard 被 if-let 的 scrutinee 临时量延长到整个块。
+            let master = sh.pty.lock().unwrap().get_master(&id);
+            if let Ok(m) = master {
                 let _ = m.lock().unwrap().resize(portable_pty::PtySize {
                     rows, cols, pixel_width: 0, pixel_height: 0,
                 });
@@ -316,16 +322,14 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
         }
         PtyHostRequest::Screen { seq, id } => {
             // 手机尚未认领时没有锁定尺寸 —— 回退到解析器自己的尺寸，不报错
-            let (cols, rows) = match sh.locks.lock().unwrap().get(&id).copied() {
+            // 先取出锁定值再释放 locks 锁 —— 否则 match 的 scrutinee 临时量会让
+            // "持 locks 锁去取 screen 锁"，同属 list_terminals 里约定的那类反向嵌套。
+            let locked = sh.locks.lock().unwrap().get(&id).copied();
+            let (cols, rows) = match locked {
                 Some(l) => l,
                 None => match sh.screen.lock().unwrap().size_of(&id) {
                     Some((r, c)) => (c, r),
-                    None => {
-                        return Some(PtyHostEvent::Error {
-                            seq,
-                            message: format!("no screen for PTY {id}"),
-                        })
-                    }
+                    None => return Some(PtyHostEvent::Error { seq, message: format!("no screen for PTY {id}") }),
                 },
             };
             // 解析器尺寸与记录不符时才重建 —— 复刻 b3ebd5a 移出的语义
