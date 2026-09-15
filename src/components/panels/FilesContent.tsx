@@ -23,10 +23,10 @@ function formatDate(epochSecs: number): string {
   const d = new Date(epochSecs * 1000);
   const now = Date.now();
   const diff = now - d.getTime();
-  if (diff < 60000) return "just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+  if (diff < 60000) return "刚刚";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`;
   return d.toLocaleDateString();
 }
 
@@ -182,14 +182,14 @@ export default function FilesContent() {
       <div className={s.filesPanelHeader}>
         <input
           className={s.filesSearch}
-          placeholder="Filter files…"
+          placeholder="筛选文件…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           spellCheck={false}
         />
         <button
           className={s.headerBtn}
-          title={isBookmarked ? "Remove bookmark" : "Bookmark this folder"}
+          title={isBookmarked ? "取消收藏" : "收藏此文件夹"}
           onClick={() => toggleBookmark(currentPath)}
           style={{ color: isBookmarked ? "var(--accent)" : undefined }}
         >
@@ -200,7 +200,7 @@ export default function FilesContent() {
         {bookmarks.length > 0 && (
           <button
             className={s.headerBtn}
-            title={bookmarksHidden ? "Show saved folders" : "Hide saved folders"}
+            title={bookmarksHidden ? "显示已收藏文件夹" : "隐藏已收藏文件夹"}
             onClick={() => setBookmarksHidden((prev) => !prev)}
             style={{ color: !bookmarksHidden ? "var(--accent)" : undefined }}
           >
@@ -213,7 +213,7 @@ export default function FilesContent() {
         )}
         <button
           className={s.headerBtn}
-          title="Collapse all"
+          title="全部折叠"
           onClick={collapseAll}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -222,7 +222,7 @@ export default function FilesContent() {
         </button>
         <button
           className={s.headerBtn}
-          title="Open in Terminal"
+          title="在终端中打开"
           onClick={() => {
             const id = useTerminalStore.getState().focusedTerminalId;
             if (id && currentPath) {
@@ -238,7 +238,7 @@ export default function FilesContent() {
         </button>
         <button
           className={s.headerBtn}
-          title="Copy path"
+          title="复制路径"
           onClick={() => {
             if (currentPath) {
               navigator.clipboard.writeText(currentPath);
@@ -267,7 +267,7 @@ export default function FilesContent() {
                 <button
                   className={s.bookmarkRemove}
                   onClick={(e) => { e.stopPropagation(); removeBookmark(bm); }}
-                  title="Remove bookmark"
+                  title="取消收藏"
                 >
                   <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 3l8 8M11 3l-8 8" />
@@ -332,11 +332,11 @@ export default function FilesContent() {
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>
-            <span>{filter ? "No matching files" : "Empty folder"}</span>
+            <span>{filter ? "没有匹配的文件" : "空文件夹"}</span>
             <span style={{ fontSize: 11 }}>
               {filter
-                ? "Try a different search term"
-                : "Navigate to a project folder using the breadcrumb above or drive selector"}
+                ? "试试其他搜索关键词"
+                : "使用上方的面包屑或驱动器选择器进入项目文件夹"}
             </span>
           </div>
         )}
@@ -382,7 +382,7 @@ export default function FilesContent() {
               </span>
               <button
                 className={s.fileCopy}
-                title={isCopied ? "Copied!" : "Copy path"}
+                title={isCopied ? "已复制！" : "复制路径"}
                 onClick={(e) => { e.stopPropagation(); copyPath(entry.path); }}
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">

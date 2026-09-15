@@ -29,12 +29,12 @@ function DeviceRow({ device }: { device: DeviceInfo }) {
     if (!ts) return null;
     const diff = Date.now() - ts;
     const min = Math.floor(diff / 60000);
-    if (min < 1) return "just now";
-    if (min < 60) return `${min}m ago`;
+    if (min < 1) return "刚刚";
+    if (min < 60) return `${min} 分钟前`;
     const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h ago`;
+    if (hr < 24) return `${hr} 小时前`;
     const days = Math.floor(hr / 24);
-    return `${days}d ago`;
+    return `${days} 天前`;
   };
 
   return (
@@ -73,7 +73,7 @@ function DeviceRow({ device }: { device: DeviceInfo }) {
           <div
             style={{ opacity: 0.9, cursor: "pointer", fontWeight: 500 }}
             onClick={() => { setLabel(device.label); setEditing(true); }}
-            title="Click to rename"
+            title="点击重命名"
           >
             {device.label}
           </div>
@@ -82,9 +82,9 @@ function DeviceRow({ device }: { device: DeviceInfo }) {
         <div style={{ display: "flex", gap: 8, opacity: 0.4, fontSize: 10, marginTop: 2, flexWrap: "wrap" }}>
           {device.deviceType && <span>{device.deviceType}</span>}
           {device.online ? (
-            <span style={{ color: "#4ade80", opacity: 1 }}>Online</span>
+            <span style={{ color: "#4ade80", opacity: 1 }}>在线</span>
           ) : (
-            formatTime(device.lastSeen) && <span>Offline · last seen {formatTime(device.lastSeen)}</span>
+            formatTime(device.lastSeen) && <span>离线 · 最后在线 {formatTime(device.lastSeen)}</span>
           )}
           <span>{new Date(device.approvedAt).toLocaleDateString()}</span>
         </div>
@@ -97,7 +97,7 @@ function DeviceRow({ device }: { device: DeviceInfo }) {
               onBlur={saveNote}
               onKeyDown={(e) => { if (e.key === "Enter") saveNote(); if (e.key === "Escape") { setNote(device.note); setEditingNote(false); } }}
               autoFocus
-              placeholder="Add a note…"
+              placeholder="添加备注…"
               style={{
                 flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
                 borderRadius: 4, padding: "2px 6px", fontSize: 11, color: "#ccc", outline: "none",
@@ -116,7 +116,7 @@ function DeviceRow({ device }: { device: DeviceInfo }) {
             style={{ opacity: 0.25, fontSize: 11, marginTop: 3, cursor: "pointer", fontStyle: "italic" }}
             onClick={() => { setNote(""); setEditingNote(true); }}
           >
-            Add note…
+            添加备注…
           </div>
         )}
       </div>
@@ -129,14 +129,14 @@ function DeviceRow({ device }: { device: DeviceInfo }) {
         onMouseOver={(e) => (e.currentTarget.style.opacity = "1")}
         onMouseOut={(e) => (e.currentTarget.style.opacity = "0.6")}
       >
-        Revoke
+        撤销
       </button>
     </div>
   );
 }
 
 function PendingPairRow({ deviceId, code }: { deviceId: string; code: string }) {
-  const [label, setLabel] = useState("Phone");
+  const [label, setLabel] = useState("手机");
 
   return (
     <div>
@@ -147,7 +147,7 @@ function PendingPairRow({ deviceId, code }: { deviceId: string; code: string }) 
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Device name"
+          placeholder="设备名称"
           style={{
             flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
             borderRadius: 4, padding: "4px 8px", fontSize: 12, color: "#fff", outline: "none",
@@ -158,14 +158,14 @@ function PendingPairRow({ deviceId, code }: { deviceId: string; code: string }) 
           onClick={() => pairApprove(deviceId, label)}
           style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff" }}
         >
-            Approve
+            允许
         </button>
         <button
           className={s.settingsBtn}
           onClick={() => pairReject(deviceId)}
           style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "#e05050" }}
         >
-            Reject
+            拒绝
         </button>
       </div>
     </div>
@@ -187,12 +187,12 @@ const labelStyle: React.CSSProperties = {
 };
 
 const SLEEP_TIMEOUTS: { label: string; never: boolean; minutes: number }[] = [
-  { label: "Never off", never: true, minutes: 0 },
-  { label: "Off after 30 min idle", never: false, minutes: 30 },
-  { label: "Off after 1 hour idle", never: false, minutes: 60 },
-  { label: "Off after 2 hours idle", never: false, minutes: 120 },
-  { label: "Off after 4 hours idle", never: false, minutes: 240 },
-  { label: "Off after 24 hours idle", never: false, minutes: 1440 },
+  { label: "永不关闭", never: true, minutes: 0 },
+  { label: "闲置 30 分钟后关闭", never: false, minutes: 30 },
+  { label: "闲置 1 小时后关闭", never: false, minutes: 60 },
+  { label: "闲置 2 小时后关闭", never: false, minutes: 120 },
+  { label: "闲置 4 小时后关闭", never: false, minutes: 240 },
+  { label: "闲置 24 小时后关闭", never: false, minutes: 1440 },
 ];
 
 export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) {
@@ -260,7 +260,7 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
     <div>
       {/* ── QR + URL ── */}
       <div style={sectionStyle}>
-        <div style={labelStyle}>Scan QR or open link</div>
+        <div style={labelStyle}>扫描二维码或打开链接</div>
         {wsIps.length > 0 && wsPort > 0 ? (
           <>
             <canvas ref={canvasRef} style={{ borderRadius: 8, display: "block" }} />
@@ -270,13 +270,13 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
             </div>
           </>
         ) : (
-          <div style={{ fontSize: 12, opacity: 0.4 }}>Starting server…</div>
+          <div style={{ fontSize: 12, opacity: 0.4 }}>正在启动服务器…</div>
         )}
       </div>
 
       {/* ── One-Time Code ── */}
       <div style={sectionStyle}>
-        <div style={labelStyle}>One-Time Code</div>
+        <div style={labelStyle}>一次性验证码</div>
         {pendingPairs.length > 0 ? (
           pendingPairs.map((p) => (
             <PendingPairRow key={p.deviceId} deviceId={p.deviceId} code={p.code} />
@@ -284,8 +284,8 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
         ) : (
           <div style={{ fontSize: 12, opacity: 0.4 }}>
             {wsIps.length > 0
-              ? "No pending requests — scan the QR code above from your phone"
-              : "Waiting for server…"}
+              ? "没有待处理的请求—— 请用手机扫描上方的二维码"
+              : "正在等待服务器…"}
           </div>
         )}
       </div>
@@ -295,14 +295,14 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
         <button onClick={() => setActiveView("pairing")}
           style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "8px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#fff", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Open Dashboard
+          打开主页
         </button>
       </div>
 
       {/* ── Auto-approve ── */}
       <div style={sectionStyle}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={labelStyle}>Auto-approve new devices</div>
+          <div style={labelStyle}>自动允许新设备</div>
           <div
             onClick={toggleAutoApprove}
             style={{
@@ -317,7 +317,7 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
           </div>
         </div>
         <div style={{ fontSize: 11, opacity: 0.35, marginTop: 4 }}>
-          {autoApprove ? "New devices connect without manual approval" : "Require manual approval for new devices"}
+          {autoApprove ? "新设备无需手动允许即可连接" : "新设备需要手动允许"}
         </div>
       </div>
 
@@ -335,14 +335,14 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
             </svg>
-            Stop Tunnel
+            停止隧道
           </button>
         </div>
       )}
 
       {/* ── Prevent Sleep ── */}
       <div style={sectionStyle}>
-        <div style={labelStyle}>Prevent sleep</div>
+        <div style={labelStyle}>防止休眠</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {SLEEP_TIMEOUTS.map((opt) => {
             const active = opt.never ? sleepNever : (!sleepNever && sleepTimeout === opt.minutes);
@@ -372,7 +372,7 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
       {/* ── Clients ── */}
       <div style={sectionStyle}>
         <div style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
-          Clients
+          客户端
           <span style={{ fontSize: 10, opacity: 0.4 }}>({devices.length})</span>
         </div>
         {devices.length > 0 ? (
@@ -380,7 +380,7 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
             <DeviceRow key={d.token} device={d} />
           ))
         ) : (
-          <div style={{ fontSize: 12, opacity: 0.4 }}>No devices paired yet</div>
+          <div style={{ fontSize: 12, opacity: 0.4 }}>尚未配对任何设备</div>
         )}
       </div>
     </div>
@@ -391,7 +391,7 @@ export default function PairingPanel({ embedded }: { embedded?: boolean } = {}) 
   return (
     <div className={s.settingsPanel}>
       <div className={s.settingsHeader}>
-        <span className={s.settingsTitle}>Pairing</span>
+        <span className={s.settingsTitle}>配对</span>
       </div>
       {content}
     </div>

@@ -81,13 +81,13 @@ export default function GitPanel({ embedded: _embedded }: { embedded?: boolean }
     try {
       let d: string;
       if (entry.xy.startsWith("??")) {
-        d = "(untracked file)";
+        d = "（未跟踪的文件）";
       } else if (entry.xy[0] !== " " && entry.xy[1] === " ") {
         d = await runGit(cwd, ["diff", "--cached", "--", entry.path]);
       } else {
         d = await runGit(cwd, ["diff", "--", entry.path]);
       }
-      setDiff(d || "(no changes)");
+      setDiff(d || "（无更改）");
       setDiffFile(entry.path);
     } catch (e) {
       setDiff(String(e));
@@ -110,7 +110,7 @@ export default function GitPanel({ embedded: _embedded }: { embedded?: boolean }
           <span className={s.mcpToolbarTitle}>
             Git{branch ? ` · ${branch}` : ""}
           </span>
-          <button className={s.mcpRefreshBtn} onClick={() => refresh()} disabled={loading} title="Refresh (uses focused pane's directory)">
+          <button className={s.mcpRefreshBtn} onClick={() => refresh()} disabled={loading} title="刷新（使用当前窗格的目录）">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? s.mcpSpin : ""}>
               <polyline points="23 4 23 10 17 10" />
               <polyline points="1 20 1 14 7 14" />
@@ -124,7 +124,7 @@ export default function GitPanel({ embedded: _embedded }: { embedded?: boolean }
             value={cwd}
             onChange={(e) => setCwd(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") refresh(cwd); }}
-            placeholder="Repository path…"
+            placeholder="仓库路径…"
             spellCheck={false}
             style={{
               flex: 1, padding: "4px 8px", fontSize: 11, fontFamily: "monospace",
@@ -135,18 +135,18 @@ export default function GitPanel({ embedded: _embedded }: { embedded?: boolean }
 
         {error && (
           <div style={{ padding: "4px 10px", fontSize: 11, color: "#e94560", whiteSpace: "pre-wrap" }}>
-            {error.includes("not a git repository") ? "Not a git repository" : error}
+            {error.includes("not a git repository") ? "不是 Git 仓库" : error}
           </div>
         )}
 
         {!error && (
           <>
             <div style={{ padding: "2px 10px", fontSize: 11, color: "var(--text-dim)" }}>
-              Changes {status.length > 0 ? `(${status.length})` : ""}
+              更改 {status.length > 0 ? `(${status.length})` : ""}
             </div>
             {status.length === 0 && !loading && (
               <div style={{ padding: "2px 10px 8px", fontSize: 11, color: "var(--text-dim)", opacity: 0.6 }}>
-                Working tree clean
+                工作树干净
               </div>
             )}
             {status.map((entry) => {
@@ -156,7 +156,7 @@ export default function GitPanel({ embedded: _embedded }: { embedded?: boolean }
                 <div key={entry.path}>
                   <div
                     onClick={() => showDiff(entry)}
-                    title="Click to toggle diff"
+                    title="点击切换差异"
                     style={{
                       display: "flex", gap: 8, alignItems: "center", padding: "3px 10px",
                       cursor: "pointer", fontSize: 12, fontFamily: "monospace",
@@ -184,7 +184,7 @@ export default function GitPanel({ embedded: _embedded }: { embedded?: boolean }
             })}
 
             <div style={{ padding: "10px 10px 2px", fontSize: 11, color: "var(--text-dim)" }}>
-              Recent commits
+              最近提交
             </div>
             {log.map((line) => {
               const [hash, ...rest] = line.split(" ");

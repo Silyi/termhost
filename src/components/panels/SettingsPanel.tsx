@@ -121,7 +121,7 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
 
   const grouped = new Map<string, TerminalEntry[]>();
   for (const t of daemonTerminals) {
-    const ws = t.workspace || "No workspace";
+    const ws = t.workspace || "无工作区";
     if (!grouped.has(ws)) grouped.set(ws, []);
     grouped.get(ws)!.push(t);
   }
@@ -167,10 +167,10 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
       const path = `${home}\\agentworkspace-workspaces.json`;
       const data = JSON.stringify(useWorkspaceStore.getState().workspaces, null, 2);
       await writeFile(path, data);
-      setWsExportMsg(`Exported to ${path}`);
+      setWsExportMsg(`已导出到 ${path}`);
       useFileViewerStore.getState().openFile(path);
     } catch (e) {
-      setWsExportMsg(`Export failed: ${e}`);
+      setWsExportMsg(`导出失败：${e}`);
     }
   }, []);
 
@@ -180,22 +180,22 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
       const path = `${home}\\agentworkspace-workspaces.json`;
       const raw = await readFile(path);
       const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) throw new Error("Invalid format");
+      if (!Array.isArray(arr)) throw new Error("格式无效");
       const valid: Workspace[] = arr.filter((w) => w && typeof w.name === "string" && Array.isArray(w.panes));
-      if (valid.length === 0) throw new Error("No valid workspaces in file");
+      if (valid.length === 0) throw new Error("文件中没有有效的工作区");
       const st = useWorkspaceStore.getState();
       useWorkspaceStore.setState({ workspaces: [...st.workspaces, ...valid] });
       useWorkspaceStore.getState().saveWorkspaces();
-      setWsExportMsg(`Imported ${valid.length} workspace(s) from ${path}`);
+      setWsExportMsg(`已从 ${path} 导入 ${valid.length} 个工作区`);
     } catch (e) {
-      setWsExportMsg(`Import failed: ${e}`);
+      setWsExportMsg(`导入失败：${e}`);
     }
   }, []);
 
   const body = (
     <>
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Theme</p>
+        <p className={s.settingsLabel}>主题</p>
         <div className={s.settingsThemes}>
           {Object.entries(THEMES).map(([key, theme]) => (
             <div
@@ -217,9 +217,9 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
       </div>
 
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Font</p>
+        <p className={s.settingsLabel}>字体</p>
         <div className={s.settingsRow}>
-          <label>Family</label>
+          <label>字体系列</label>
           <select value={termFontFamily} onChange={(e) => setTermFontFamily(e.target.value)}>
             {FONT_OPTIONS.map((f) => (
               <option key={f} value={f}>{f.split("'")[1] || f}</option>
@@ -227,69 +227,69 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
           </select>
         </div>
         <div className={s.settingsRow}>
-          <label>Size</label>
+          <label>字号</label>
           <input type="range" min={8} max={24} value={termFontSize} onChange={(e) => setTermFontSize(parseInt(e.target.value))} />
           <span className={s.settingsVal}>{termFontSize}px</span>
         </div>
       </div>
 
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Cursor</p>
+        <p className={s.settingsLabel}>光标</p>
         <div className={s.settingsRow}>
-          <label>Shape</label>
+          <label>形状</label>
           <select value={termCursorStyle} onChange={(e) => setTermCursorStyle(e.target.value as CursorStyle)}>
-            <option value="block">Block</option>
-            <option value="bar">Bar</option>
-            <option value="underline">Underline</option>
+            <option value="block">块状</option>
+            <option value="bar">竖线</option>
+            <option value="underline">下划线</option>
           </select>
         </div>
       </div>
 
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Interface</p>
+        <p className={s.settingsLabel}>界面</p>
         <div className={s.settingsRow}>
-          <label>UI Scale</label>
+          <label>界面缩放</label>
           <input type="range" min={80} max={150} step={5} value={uiScale} onChange={(e) => setUiScale(parseInt(e.target.value))} />
           <span className={s.settingsVal}>{uiScale}%</span>
         </div>
       </div>
 
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Layout</p>
+        <p className={s.settingsLabel}>布局</p>
         <div className={s.settingsRow}>
-          <label>Resize</label>
+          <label>窗格缩放</label>
           <button
             className={splitResizeEnabled ? s.settingsBtnActive : s.settingsBtn}
             onClick={() => setSplitResizeEnabled(!splitResizeEnabled)}
           >
-            {splitResizeEnabled ? "Enabled" : "Disabled"}
+            {splitResizeEnabled ? "已启用" : "已禁用"}
           </button>
         </div>
       </div>
 
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Daemon</p>
+        <p className={s.settingsLabel}>守护进程</p>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <span style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
           <span style={{ fontSize: 13, color: "var(--text-main)" }}>
-            {daemonMode === "direct" ? "Direct mode" : daemonConnected ? `Connected (${daemonTerminalCount} terminals)` : "Disconnected"}
+            {daemonMode === "direct" ? "直连模式" : daemonConnected ? `已连接（${daemonTerminalCount} 个终端）` : "未连接"}
           </span>
         </div>
 
         {protocolMismatch && daemonConnected && (
           <div style={{ fontSize: 11, color: "#e5a50a", marginBottom: 8, lineHeight: 1.4 }}>
-            Daemon is outdated (protocol mismatch). Shutdown daemon, then restart to update.
+            守护进程版本过旧（协议不匹配）。请先关闭守护进程，再重新启动以更新。
           </div>
         )}
 
         <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
           {!daemonConnected && daemonMode !== "direct" && (
             <button className={s.settingsBtn} onClick={handleDaemonRestart} disabled={restarting}>
-              {restarting ? "Restarting…" : "Restart"}
+              {restarting ? "重启中…" : "重启"}
             </button>
           )}
           {daemonConnected && (
-            <button className={s.settingsBtn} onClick={handleDaemonShutdown}>Shutdown</button>
+            <button className={s.settingsBtn} onClick={handleDaemonShutdown}>关闭</button>
           )}
           {daemonTerminals.length > 0 && (
             <button
@@ -297,14 +297,14 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
               style={confirmKillAll ? { borderColor: "#e74c3c", color: "#e74c3c" } : undefined}
               onClick={handleKillAll}
             >
-              {confirmKillAll ? "Confirm kill all?" : "Kill all"}
+              {confirmKillAll ? "确认全部终止？" : "全部终止"}
             </button>
           )}
         </div>
 
         {daemonConnected && (
           <button className={s.settingsBtn} onClick={openDaemonMenu} style={{ marginBottom: 8 }}>
-            List terminals
+            列出终端
           </button>
         )}
 
@@ -325,7 +325,7 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
                       <button
                         style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", padding: "2px 4px", borderRadius: 3, fontSize: 11, flexShrink: 0 }}
                         onClick={() => handleKillTerminal(t.id)}
-                        title="Kill terminal"
+                        title="终止终端"
                       >
                         ✕
                       </button>
@@ -339,31 +339,31 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
       </div>
 
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Remote Access</p>
+        <p className={s.settingsLabel}>远程访问</p>
         <div className={s.settingsRow}>
-          <label>Mobile</label>
+          <label>移动端</label>
           <button
             className={wsRunning ? s.settingsBtnActive : s.settingsBtn}
             onClick={toggleWsServer}
           >
-            {wsRunning ? "Stop" : "Start"}
+            {wsRunning ? "停止" : "启动"}
           </button>
           <span
             className={s.settingsVal}
             style={{ color: wsRunning ? "#2ecc71" : "var(--text-dim)" }}
           >
-            {wsRunning ? "On" : "Off"}
+            {wsRunning ? "开" : "关"}
           </span>
         </div>
         {wsRunning && wsIps.length > 0 && (
           <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>
-            Open on phone:
+            在手机上打开：
             {wsIps.map((ip) => {
               const isTs = ip.startsWith("100.");
               const url = `http://${ip}:9090`;
               return (
                 <div key={ip} style={{ marginTop: 2 }}>
-                  <span style={{ opacity: 0.7 }}>{isTs ? "🌐 Tailscale" : "🏠 Home (LAN)"}</span>
+                  <span style={{ opacity: 0.7 }}>{isTs ? "🌐 Tailscale" : "🏠 家庭网络（局域网）"}</span>
                   <div className={s.settingsWsUrl}>{url}</div>
                   {isTs && (
                     <button
@@ -371,7 +371,7 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
                       style={{ fontSize: 10, padding: "2px 8px", marginTop: 2 }}
                       onClick={() => navigator.clipboard.writeText(url)}
                     >
-                      Copy URL
+                      复制链接
                     </button>
                   )}
                 </div>
@@ -382,14 +382,14 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
       </div>
 
       <div className={s.settingsSection}>
-        <p className={s.settingsLabel}>Workspaces</p>
+        <p className={s.settingsLabel}>工作区</p>
         <div className={s.settingsRow}>
-          <label>Backup</label>
-          <button className={s.settingsBtn} onClick={exportWorkspaces}>Export</button>
-          <button className={s.settingsBtn} onClick={importWorkspaces}>Import</button>
+          <label>备份</label>
+          <button className={s.settingsBtn} onClick={exportWorkspaces}>导出</button>
+          <button className={s.settingsBtn} onClick={importWorkspaces}>导入</button>
         </div>
         <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>
-          {wsExportMsg || "JSON file in your home folder (agentworkspace-workspaces.json)"}
+          {wsExportMsg || "JSON 文件存放在主目录中（agentworkspace-workspaces.json）"}
         </div>
       </div>
     </>
@@ -402,7 +402,7 @@ export default function SettingsPanel({ embedded }: { embedded?: boolean } = {})
   return (
     <div className={s.settingsPanel}>
       <div className={s.settingsHeader}>
-        <span className={s.settingsTitle}>Settings</span>
+        <span className={s.settingsTitle}>设置</span>
         <button className={s.headerBtn} onClick={toggleSettings}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" />

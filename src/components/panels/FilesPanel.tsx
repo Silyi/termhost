@@ -24,10 +24,10 @@ function formatDate(epochSecs: number): string {
   const d = new Date(epochSecs * 1000);
   const now = Date.now();
   const diff = now - d.getTime();
-  if (diff < 60000) return "just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+  if (diff < 60000) return "刚刚";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`;
   return d.toLocaleDateString();
 }
 
@@ -301,7 +301,7 @@ export default function FilesPanel() {
       <div className={s.filesPanelHeader}>
         <input
           className={s.filesSearch}
-          placeholder="Filter files…"
+          placeholder="筛选文件…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           onKeyDown={handleFilterKeyDown}
@@ -309,7 +309,7 @@ export default function FilesPanel() {
         />
         <button
           className={s.headerBtn}
-          title={isBookmarked ? "Remove bookmark" : "Bookmark this folder"}
+          title={isBookmarked ? "取消收藏" : "收藏此文件夹"}
           onClick={() => toggleBookmark(currentPath)}
           style={{ color: isBookmarked ? "var(--accent)" : undefined }}
         >
@@ -320,7 +320,7 @@ export default function FilesPanel() {
         {bookmarks.length > 0 && (
           <button
             className={s.headerBtn}
-            title={bookmarksHidden ? "Show saved folders" : "Hide saved folders"}
+            title={bookmarksHidden ? "显示已收藏文件夹" : "隐藏已收藏文件夹"}
             onClick={() => setBookmarksHidden((prev) => !prev)}
             style={{ color: !bookmarksHidden ? "var(--accent)" : undefined }}
           >
@@ -333,7 +333,7 @@ export default function FilesPanel() {
         )}
         <button
           className={s.headerBtn}
-          title="Collapse all"
+          title="全部折叠"
           onClick={collapseAll}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -342,7 +342,7 @@ export default function FilesPanel() {
         </button>
         <button
           className={s.headerBtn}
-          title="Open in Terminal"
+          title="在终端中打开"
           onClick={() => {
             const id = useTerminalStore.getState().focusedTerminalId;
             if (id && currentPath) {
@@ -358,7 +358,7 @@ export default function FilesPanel() {
         </button>
         <button
           className={s.headerBtn}
-          title="Open in Explorer"
+          title="在资源管理器中打开"
           onClick={() => { if (currentPath) openFolder(currentPath); }}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -382,7 +382,7 @@ export default function FilesPanel() {
                 <button
                   className={s.bookmarkRemove}
                   onClick={(e) => { e.stopPropagation(); removeBookmark(bm); }}
-                  title="Remove bookmark"
+                  title="取消收藏"
                 >
                   <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 3l8 8M11 3l-8 8" />
@@ -458,7 +458,7 @@ export default function FilesPanel() {
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>
-            <span>{filter ? "No matching files" : "Empty folder"}</span>
+            <span>{filter ? "没有匹配的文件" : "空文件夹"}</span>
           </div>
         )}
         {filtered.map((item, index) => {
@@ -510,7 +510,7 @@ export default function FilesPanel() {
               </span>
               <button
                 className={s.fileCopy}
-                title={isCopied ? "Copied!" : "Copy path"}
+                title={isCopied ? "已复制！" : "复制路径"}
                 onClick={(e) => { e.stopPropagation(); copyPath(entry.path); }}
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -542,25 +542,25 @@ export default function FilesPanel() {
           >
             {entry && (
               <button style={itemStyle} onClick={() => { handleFileClick(entry); setCtxMenu(null); }}>
-                {entry.is_dir ? "Open folder" : "Open"}
+                {entry.is_dir ? "打开文件夹" : "打开"}
               </button>
             )}
             {entry && (
               <button style={itemStyle} onClick={() => { copyPath(entry.path); setCtxMenu(null); }}>
-                Copy path
+                复制路径
               </button>
             )}
-            <button style={itemStyle} onClick={() => openDialog("newFile", entry)}>New file…</button>
-            <button style={itemStyle} onClick={() => openDialog("newDir", entry)}>New folder…</button>
+            <button style={itemStyle} onClick={() => openDialog("newFile", entry)}>新建文件…</button>
+            <button style={itemStyle} onClick={() => openDialog("newDir", entry)}>新建文件夹…</button>
             {entry && (
-              <button style={itemStyle} onClick={() => openDialog("rename", entry)}>Rename…</button>
+              <button style={itemStyle} onClick={() => openDialog("rename", entry)}>重命名…</button>
             )}
             {entry && (
               <button
                 style={{ ...itemStyle, color: confirmDelete ? "#e94560" : "var(--text)" }}
                 onClick={() => handleDelete(entry)}
               >
-                {confirmDelete ? "Confirm delete?" : "Delete"}
+                {confirmDelete ? "确认删除？" : "删除"}
               </button>
             )}
           </div>
@@ -577,9 +577,9 @@ export default function FilesPanel() {
         >
           <div style={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 8, padding: 16, width: 320 }}>
             <div style={{ fontSize: 13, marginBottom: 8, color: "var(--text)" }}>
-              {dialog.mode === "newFile" && `New file in ${dialog.dir}`}
-              {dialog.mode === "newDir" && `New folder in ${dialog.dir}`}
-              {dialog.mode === "rename" && `Rename ${dialog.oldName}`}
+              {dialog.mode === "newFile" && `在 ${dialog.dir} 中新建文件`}
+              {dialog.mode === "newDir" && `在 ${dialog.dir} 中新建文件夹`}
+              {dialog.mode === "rename" && `重命名 ${dialog.oldName}`}
             </div>
             <input
               autoFocus
@@ -589,7 +589,7 @@ export default function FilesPanel() {
                 if (e.key === "Enter") confirmDialog();
                 if (e.key === "Escape") setDialog(null);
               }}
-              placeholder={dialog.mode === "rename" ? "New name" : "Name"}
+              placeholder={dialog.mode === "rename" ? "新名称" : "名称"}
               spellCheck={false}
               style={{
                 width: "100%", boxSizing: "border-box", padding: "6px 8px", fontSize: 13,
@@ -601,13 +601,13 @@ export default function FilesPanel() {
                 style={{ padding: "5px 12px", fontSize: 12, background: "none", border: "1px solid #333", borderRadius: 4, color: "var(--text-dim)", cursor: "pointer" }}
                 onClick={() => setDialog(null)}
               >
-                Cancel
+                取消
               </button>
               <button
                 style={{ padding: "5px 12px", fontSize: 12, background: "var(--accent)", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer" }}
                 onClick={confirmDialog}
               >
-                OK
+                确定
               </button>
             </div>
           </div>
