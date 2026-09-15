@@ -331,7 +331,12 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
             // 解析器尺寸与记录不符时才重建 —— 复刻 b3ebd5a 移出的语义
             let needs_rebuild = sh.screen.lock().unwrap().size_of(&id) != Some((rows, cols));
             if needs_rebuild {
-                if let Some(raw) = sh.buffers.lock().unwrap().get_bytes(&id) {
+                // 先把 raw 取出来再释放 buffers 锁 —— 若写成
+                // `if let Some(raw) = sh.buffers.lock()...get_bytes(..)`，在 2021 edition 下
+                // 那个临时 guard 会活到整个 if let 块结束，于是"持 buffers 锁去取 screen 锁"，
+                // 给后续任务强加一条 buffers→screen 的加锁顺序约束。
+                let raw = sh.buffers.lock().unwrap().get_bytes(&id);
+                if let Some(raw) = raw {
                     sh.screen.lock().unwrap().rebuild(&id, rows, cols, &raw);
                 }
             }
@@ -343,23 +348,6 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
                 }),
             }
         }
-        other => Some(PtyHostEvent::Error {
-            seq: request_seq(&other),
-            message: "not implemented yet".into(),
-        }),
-    }
-}
-
-/// 取出请求里的 seq，用于错误回执。
-fn request_seq(req: &PtyHostRequest) -> u64 {
-    match req {
-        PtyHostRequest::Spawn { seq, .. }
-        | PtyHostRequest::Resize { seq, .. }
-        | PtyHostRequest::Kill { seq, .. }
-        | PtyHostRequest::Screen { seq, .. }
-        | PtyHostRequest::LockSize { seq, .. }
-        | PtyHostRequest::List { seq } => *seq,
-        PtyHostRequest::Write { .. } => 0, // 单向，不会被回执
     }
 }
 
