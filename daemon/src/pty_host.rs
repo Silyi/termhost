@@ -7,6 +7,21 @@
 use std::ptr;
 
 use termhostd::pty_ipc::PTY_HOST_MUTEX_NAME;
+use termhostd::pty_ipc::PtyHostEvent;
+
+/// 输出画到的最大位置是否超出了手机锁定的尺寸。
+/// `locked` 是 `(cols, rows)` —— 与协议一致。
+fn exceeds_lock(locked: (u16, u16), max_row: usize, max_col: usize) -> bool {
+    let (cols, rows) = locked;
+    max_col > cols as usize || max_row > rows as usize
+}
+
+/// 把 `ScreenManager::snapshot_with_size` 的 `(data, rows, cols)`
+/// 转成协议要求的 `ScreenResult { data, cols, rows }`。
+fn to_screen_result(seq: u64, snap: (String, u16, u16)) -> PtyHostEvent {
+    let (data, rows, cols) = snap;
+    PtyHostEvent::ScreenResult { seq, data: Some(data), cols, rows }
+}
 
 #[link(name = "kernel32")]
 extern "system" {
@@ -48,5 +63,43 @@ fn main() {
     // 骨架阶段：保持存活以持有互斥体（T5 会用 tokio runtime 替换这里的 main）
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use termhostd::pty_ipc::PtyHostEvent;
+
+    #[test]
+    fn exceeds_lock_is_false_when_output_fits() {
+        // locked = (cols=80, rows=24)
+        assert!(!exceeds_lock((80, 24), 24, 80));
+    }
+
+    #[test]
+    fn exceeds_lock_is_true_when_wider_than_lock() {
+        assert!(exceeds_lock((80, 24), 24, 81));
+    }
+
+    #[test]
+    fn exceeds_lock_is_true_when_taller_than_lock() {
+        assert!(exceeds_lock((80, 24), 25, 80));
+    }
+
+    /// 协议要 (cols, rows)，vt100 给 (rows, cols)。这个测试就是防它搞反。
+    #[test]
+    fn screen_result_uses_cols_rows_order() {
+        // 来自 ScreenManager 的形状：(data, rows, cols) —— 这里 rows=24, cols=80
+        let ev = to_screen_result(7, ("SCREEN".to_string(), 24, 80));
+        match ev {
+            PtyHostEvent::ScreenResult { seq, data, cols, rows } => {
+                assert_eq!(seq, 7);
+                assert_eq!(data.as_deref(), Some("SCREEN"));
+                assert_eq!(cols, 80, "cols 必须是 80，不是 24");
+                assert_eq!(rows, 24, "rows 必须是 24，不是 80");
+            }
+            other => panic!("expected ScreenResult, got {other:?}"),
+        }
     }
 }
