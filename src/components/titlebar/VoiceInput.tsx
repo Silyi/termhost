@@ -32,7 +32,7 @@ export default function VoiceInput() {
   const start = useCallback(() => {
     const Ctor = getRecognitionCtor();
     if (!Ctor) {
-      setHint("Speech recognition is not available in this WebView. Use the mobile client for voice input.");
+      setHint("当前 WebView 不支持语音识别。请使用移动端进行语音输入。");
       setTimeout(() => setHint(""), 4000);
       return;
     }
@@ -51,7 +51,7 @@ export default function VoiceInput() {
       if (id) writeTerminal(id, text + " ").catch(() => {});
     };
     rec.onerror = (e: any) => {
-      setHint(e?.error === "not-allowed" ? "Microphone access denied" : `Speech error: ${e?.error || "unknown"}`);
+      setHint(e?.error === "not-allowed" ? "麦克风权限被拒绝" : `语音识别错误：${e?.error || "未知"}`);
       setTimeout(() => setHint(""), 4000);
       stop();
     };
@@ -72,9 +72,9 @@ export default function VoiceInput() {
         title={
           supported
             ? listening
-              ? "Stop dictation"
-              : `Dictate into focused terminal (${lang})`
-            : "Voice input (not supported in this WebView — works in mobile client)"
+              ? "停止听写"
+              : `语音输入到当前终端 (${lang})`
+            : "语音输入（当前 WebView 不支持，移动端可用）"
         }
         onClick={() => (listening ? stop() : start())}
         style={listening ? { color: "#e94560" } : !supported ? { opacity: 0.45 } : undefined}
@@ -83,6 +83,7 @@ export default function VoiceInput() {
           <rect x="9" y="2" width="6" height="11" rx="3" />
           <path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M8 22h8" />
         </svg>
+        <span>语音</span>
         {listening && (
           <span
             style={{
@@ -96,7 +97,7 @@ export default function VoiceInput() {
         <button
           className={s.btn}
           style={{ fontSize: 9, width: "auto", padding: "0 4px" }}
-          title="Dictation language"
+          title="听写语言"
           onClick={() => setLang((l) => (l === "uk-UA" ? "en-US" : "uk-UA"))}
         >
           {lang.slice(0, 2).toUpperCase()}

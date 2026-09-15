@@ -170,7 +170,7 @@ export default function DaemonIndicator() {
   // Group terminals by workspace
   const grouped = new Map<string, TerminalEntry[]>();
   for (const t of terminals) {
-    const ws = t.workspace || "No workspace";
+    const ws = t.workspace || "无工作区";
     if (!grouped.has(ws)) grouped.set(ws, []);
     grouped.get(ws)!.push(t);
   }
@@ -181,8 +181,8 @@ export default function DaemonIndicator() {
         className={s.indicator}
         onClick={() => setMenuOpen(!menuOpen)}
         title={
-          mode === "direct" ? "Direct mode" :
-          connected ? `Daemon: ${terminalCount} terminals` : "Daemon disconnected"
+          mode === "direct" ? "直连模式" :
+          connected ? `守护进程：${terminalCount} 个终端` : "守护进程未连接"
         }
       >
         <span className={`${s.dot} ${
@@ -200,8 +200,8 @@ export default function DaemonIndicator() {
               connected ? s.dotOn : s.dotOff
             }`} />
             <span>{
-              mode === "direct" ? "Direct mode" :
-              connected ? "Daemon active" : "Daemon disconnected"
+              mode === "direct" ? "直连模式" :
+              connected ? "守护进程运行中" : "守护进程未连接"
             }</span>
           </div>
 
@@ -210,8 +210,8 @@ export default function DaemonIndicator() {
               {pendingPairs.map((p) => (
                 <div key={p.deviceId} className={s.pairRow}>
                   <span className={s.pairCode}>{p.code}</span>
-                  <span className={s.pairLabel}>New device wants to pair</span>
-                  <button className={s.pairApprove} onClick={() => approvePair(p.deviceId)}>Approve</button>
+                  <span className={s.pairLabel}>新设备请求配对</span>
+                  <button className={s.pairApprove} onClick={() => approvePair(p.deviceId)}>允许</button>
                   <button className={s.pairReject} onClick={() => rejectPair(p.deviceId)}>✕</button>
                 </div>
               ))}
@@ -241,7 +241,7 @@ export default function DaemonIndicator() {
                         <button
                           className={s.killBtn}
                           onClick={() => handleKillTerminal(t.id)}
-                          title="Kill terminal"
+                          title="终止终端"
                         >
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                             <path d="M3 3l6 6M9 3l-6 6" />
@@ -257,18 +257,18 @@ export default function DaemonIndicator() {
 
           {protocolMismatch && connected && (
             <div className={s.emptyMsg} style={{ color: "#e5a50a" }}>
-              Daemon is outdated (protocol mismatch). Shutdown daemon, then restart it to update.
+              守护进程版本过旧（协议不匹配）。请先关闭守护进程，再重新启动以更新。
             </div>
           )}
 
           {terminals.length === 0 && connected && (
-            <div className={s.emptyMsg}>No background terminals</div>
+            <div className={s.emptyMsg}>没有后台终端</div>
           )}
 
           <div className={s.menuActions}>
             {!connected && mode !== "direct" && (
               <button className={s.actionBtn} onClick={handleRestart} disabled={restarting}>
-                {restarting ? "Restarting…" : "Restart daemon"}
+                {restarting ? "重启中…" : "重启守护进程"}
               </button>
             )}
             {terminals.length > 0 && (
@@ -276,7 +276,7 @@ export default function DaemonIndicator() {
                 className={`${s.actionBtn} ${confirming === "killAll" ? s.actionDanger : ""}`}
                 onClick={handleKillAll}
               >
-                {confirming === "killAll" ? "Confirm kill all?" : "Kill all terminals"}
+                {confirming === "killAll" ? "确认全部终止？" : "终止所有终端"}
               </button>
             )}
             {connected && (
@@ -284,7 +284,7 @@ export default function DaemonIndicator() {
                 className={`${s.actionBtn} ${confirming === "shutdown" ? s.actionDanger : ""}`}
                 onClick={handleShutdown}
               >
-                {confirming === "shutdown" ? "Confirm shutdown?" : "Shutdown daemon"}
+                {confirming === "shutdown" ? "确认关闭？" : "关闭守护进程"}
               </button>
             )}
           </div>

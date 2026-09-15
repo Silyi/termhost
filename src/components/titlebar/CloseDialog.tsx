@@ -34,21 +34,21 @@ export default function CloseDialog() {
   return (
     <div className={s.overlay}>
       <div className={s.dialog}>
-        <div className={s.title}>Background terminals are running</div>
+        <div className={s.title}>后台终端正在运行</div>
         <div className={s.body}>
-          The PTY daemon has active terminals. What should happen when you close the window?
+          PTY 守护进程还有活动终端。关闭窗口时要如何处理？
         </div>
         <div className={s.actions}>
-          <button className={s.btnSecondary} onClick={handleCancel}>Cancel</button>
+          <button className={s.btnSecondary} onClick={handleCancel}>取消</button>
           <button className={s.btnPrimary} onClick={handleKeepAlive}>
-            Hide to tray
+            隐藏到托盘
           </button>
           <button className={s.btnDanger} onClick={handleKillAll}>
-            Kill all & quit
+            全部终止并退出
           </button>
         </div>
         <div className={s.hint}>
-          "Hide to tray" — window hides, terminals keep running, double-click tray to return
+          「隐藏到托盘」—— 窗口会隐藏，终端继续运行，双击托盘图标即可恢复
         </div>
       </div>
     </div>

@@ -37,7 +37,7 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
 
   const saveEditing = useCallback(() => {
     if (editingIdx !== null) {
-      const name = editValue.trim() || "Workspace";
+      const name = editValue.trim() || "工作区";
       if (name !== workspaces[editingIdx]?.name) {
         updateWorkspace(editingIdx, { name });
       }
@@ -64,11 +64,12 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
       <button
         className={`${s.homeBtn} ${activeView === "dashboard" ? s.homeBtnActive : ""}`}
         onClick={() => setActiveView("dashboard")}
-        title="Dashboard"
+        title="主页"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
         </svg>
+        <span>主页</span>
       </button>
       <div className={s.tabs}>
         {workspaces.map((ws, idx) => {
@@ -104,6 +105,7 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
               {!isEditing && (
                 <button
                   className={s.tabClose}
+                  title="关闭工作区"
                   onClick={(e) => { e.stopPropagation(); onDeleteWorkspace(idx); }}
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3">
@@ -114,10 +116,11 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
             </div>
           );
         })}
-        <button className={s.newTab} onClick={onNewWorkspace} title="New Workspace (Ctrl+Shift+T)">
+        <button className={s.newTab} onClick={onNewWorkspace} title="新建工作区 (Ctrl+Shift+T)">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M6 2v8M2 6h8" />
           </svg>
+          <span>新建</span>
         </button>
       </div>
       <div className={s.drag} data-tauri-drag-region />
@@ -125,24 +128,26 @@ export default function Titlebar({ onSwitchWorkspace, onNewWorkspace, onDeleteWo
         <button
           className={`${s.btn} ${activeView === "all-terminals" ? s.btnActive : ""}`}
           onClick={() => setActiveView("all-terminals")}
-          title="All Terminals"
+          title="所有终端"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" />
             <line x1="8" y1="21" x2="16" y2="21" />
             <line x1="12" y1="17" x2="12" y2="21" />
           </svg>
+          <span>终端</span>
         </button>
         <VoiceInput />
         <button
           className={`${s.btn} ${explorerOpen ? s.btnActive : ""}`}
-          title="Panel (Ctrl+B)"
+          title="侧边面板 (Ctrl+B)"
           onClick={() => toggleExplorer(usePanelStore.getState().explorerTab)}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <line x1="15" y1="3" x2="15" y2="21" />
           </svg>
+          <span>面板</span>
         </button>
       </div>
     </div>
