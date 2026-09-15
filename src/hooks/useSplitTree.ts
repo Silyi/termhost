@@ -102,3 +102,34 @@ export function removePaneFromTree(
   return root;
 }
 
+/** 把一个**已存在**的终端接进布局树。
+ *  与 splitPaneInTree 同形，区别是新叶节点的 id 由调用方给出 —— 用于接入
+ *  一个已经在 daemon 里跑着的终端（手机建的、或断线重连的），而不是新建一个。 */
+export function attachPaneToTree(
+  root: TreeNode,
+  targetId: string,
+  newPaneId: string,
+  direction: "horizontal" | "vertical"
+): TreeNode | null {
+  function insertSplit(node: TreeNode): TreeNode | null {
+    if (node.type === "leaf") {
+      if (node.id === targetId) {
+        return {
+          type: "split",
+          direction,
+          ratio: 0.5,
+          first: node,
+          second: { type: "leaf", id: newPaneId },
+        };
+      }
+      return null;
+    }
+    const newFirst = insertSplit(node.first);
+    if (newFirst) return { ...node, first: newFirst };
+    const newSecond = insertSplit(node.second);
+    if (newSecond) return { ...node, second: newSecond };
+    return null;
+  }
+  return insertSplit(root);
+}
+
