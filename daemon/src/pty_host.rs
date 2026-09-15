@@ -4,10 +4,20 @@
 //! Speaks the framed-JSON protocol in `pty_ipc` over
 //! `\\.\pipe\termhost-pty-host-v1`.
 
+use std::collections::HashMap;
 use std::ptr;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
+use termhostd::buffer::BufferManager;
 use termhostd::pty_ipc::PTY_HOST_MUTEX_NAME;
 use termhostd::pty_ipc::PtyHostEvent;
+use termhostd::pty_ipc::PtyHostRequest;
+use termhostd::pty_ipc::PtyHostTerminalInfo;
+use termhostd::pty_manager::create_pty;
+use termhostd::pty_manager::PtyManager;
+use termhostd::screen::ScreenManager;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// 输出画到的范围是否超出了手机锁定的尺寸。
 ///
@@ -70,6 +80,146 @@ fn main() {
     // 骨架阶段：保持存活以持有互斥体（T5 会用 tokio runtime 替换这里的 main）
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+/// 客户端连接的写端。承载**已序列化的整帧**（4 字节 LE 长度 + JSON），
+/// 这样一份输出可以零拷贝地发给所有连接。
+type ClientTx = UnboundedSender<Vec<u8>>;
+
+pub struct Shared {
+    pub pty: Mutex<PtyManager>,
+    pub screen: Mutex<ScreenManager>,
+    pub buffers: Mutex<BufferManager>,
+    /// 手机主张的尺寸，`(cols, rows)`
+    pub locks: Mutex<HashMap<String, (u16, u16)>>,
+    /// 上次掰回尺寸的时间，用于 500ms 限流
+    pub last_revert: Mutex<HashMap<String, Instant>>,
+    pub clients: Mutex<Vec<ClientTx>>,
+    /// PTY 回调线程 → 分发任务。放在这里，避免在函数间传递。
+    pub out: UnboundedSender<Out>,
+}
+
+impl Shared {
+    /// 返回共享状态与输出通道的接收端 —— 接收端由 `serve()` 拿去启动分发任务。
+    pub fn new() -> (Arc<Self>, tokio::sync::mpsc::UnboundedReceiver<Out>) {
+        let (out, rx) = tokio::sync::mpsc::unbounded_channel::<Out>();
+        let sh = Arc::new(Self {
+            pty: Mutex::new(PtyManager::new()),
+            screen: Mutex::new(ScreenManager::new()),
+            buffers: Mutex::new(BufferManager::new()),
+            locks: Mutex::new(HashMap::new()),
+            last_revert: Mutex::new(HashMap::new()),
+            clients: Mutex::new(Vec::new()),
+            out,
+        });
+        (sh, rx)
+    }
+}
+
+/// 从 PTY 回调线程送往分发任务的事件。
+pub enum Out {
+    Data(String, String), // (id, utf8 chunk)
+    Exit(String),         // id
+}
+
+fn spawn_terminal(
+    sh: &Arc<Shared>,
+    id: &str,
+    cwd: &str,
+    command: Option<&str>,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    // 幂等：同 id 已存在就直接成功（daemon 重连后会重新 Spawn 自己的终端）
+    if sh.pty.lock().unwrap().has(id) {
+        return Ok(());
+    }
+
+    let id_data = id.to_string();
+    let out_data = sh.out.clone();
+    let id_exit = id.to_string();
+    let out_exit = sh.out.clone();
+
+    let inst = create_pty(
+        cwd,
+        command,
+        cols,
+        rows,
+        move |data| {
+            let _ = out_data.send(Out::Data(id_data.clone(), data));
+        },
+        move || {
+            let _ = out_exit.send(Out::Exit(id_exit));
+        },
+    )
+    .map_err(|e| e.to_string())?;
+
+    sh.pty.lock().unwrap().register(id.to_string(), inst);
+    // ScreenManager 的 create 签名是 (id, rows, cols) —— 注意顺序
+    sh.screen.lock().unwrap().create(id, rows, cols);
+    sh.buffers.lock().unwrap().create(id);
+    Ok(())
+}
+
+fn kill_terminal(sh: &Arc<Shared>, id: &str) {
+    sh.pty.lock().unwrap().kill(id); // drop master 即关闭 ConPTY，子进程随之结束
+    sh.screen.lock().unwrap().remove(id);
+    sh.buffers.lock().unwrap().remove(id);
+    sh.locks.lock().unwrap().remove(id);
+    sh.last_revert.lock().unwrap().remove(id);
+}
+
+fn list_terminals(sh: &Arc<Shared>) -> Vec<PtyHostTerminalInfo> {
+    // 先把 id 取出来就释放 pty 锁 —— 绝不在持有 pty 锁时再去拿 screen 锁，
+    // 否则与其它路径构成相反的加锁顺序就会死锁。
+    let ids = sh.pty.lock().unwrap().list_ids();
+    let locks = sh.locks.lock().unwrap().clone();
+    ids.into_iter()
+        .map(|id| {
+            // 记录尺寸优先取锁定值；没有锁定时回退到屏幕解析器的尺寸
+            let (cols, rows) = locks
+                .get(&id)
+                .copied()
+                .or_else(|| sh.screen.lock().unwrap().size_of(&id).map(|(r, c)| (c, r)))
+                .unwrap_or((80, 24));
+            PtyHostTerminalInfo { id: id.clone(), cwd: String::new(), command: String::new(), cols, rows }
+        })
+        .collect()
+}
+
+async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHostEvent> {
+    match req {
+        PtyHostRequest::Spawn { seq, id, cwd, command, cols, rows } => {
+            match spawn_terminal(sh, &id, &cwd, command.as_deref(), cols, rows) {
+                Ok(()) => Some(PtyHostEvent::SpawnResult { seq, id }),
+                Err(e) => Some(PtyHostEvent::Error { seq, message: e }),
+            }
+        }
+        PtyHostRequest::Kill { seq, id } => {
+            kill_terminal(sh, &id);
+            Some(PtyHostEvent::Ok { seq })
+        }
+        PtyHostRequest::List { seq } => {
+            Some(PtyHostEvent::ListResult { seq, terminals: list_terminals(sh) })
+        }
+        other => Some(PtyHostEvent::Error {
+            seq: request_seq(&other),
+            message: "not implemented yet".into(),
+        }),
+    }
+}
+
+/// 取出请求里的 seq，用于错误回执。
+fn request_seq(req: &PtyHostRequest) -> u64 {
+    match req {
+        PtyHostRequest::Spawn { seq, .. }
+        | PtyHostRequest::Resize { seq, .. }
+        | PtyHostRequest::Kill { seq, .. }
+        | PtyHostRequest::Screen { seq, .. }
+        | PtyHostRequest::LockSize { seq, .. }
+        | PtyHostRequest::List { seq } => *seq,
+        PtyHostRequest::Write { .. } => 0, // 单向，不会被回执
     }
 }
 
