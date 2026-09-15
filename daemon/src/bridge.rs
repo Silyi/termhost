@@ -20,7 +20,7 @@ use std::os::windows::io::AsRawHandle;
 use std::ptr;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use termhost_shared::protocol::{encode_message, DaemonRequest};
 
@@ -43,6 +43,7 @@ extern "system" {
     fn SetConsoleCP(code_page: u32) -> i32;
     fn GetConsoleOutputCP() -> u32;
     fn SetConsoleOutputCP(code_page: u32) -> i32;
+    fn SetConsoleCtrlHandler(handler: Option<HandlerRoutine>, add: i32) -> i32;
     fn PeekNamedPipe(
         h: HANDLE,
         buf: *mut c_void,
@@ -57,6 +58,16 @@ extern "system" {
 /// `(DWORD)-10` / `(DWORD)-11`
 const STD_INPUT_HANDLE: u32 = -10i32 as u32;
 const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
+
+/// `PHANDLER_ROUTINE`
+type HandlerRoutine = unsafe extern "system" fn(ctrl_type: u32) -> i32;
+
+// --- 控制台控制事件（HandlerRoutine 的 dwCtrlType）---
+const CTRL_C_EVENT: u32 = 0;
+const CTRL_BREAK_EVENT: u32 = 1;
+const CTRL_CLOSE_EVENT: u32 = 2;
+const CTRL_LOGOFF_EVENT: u32 = 5;
+const CTRL_SHUTDOWN_EVENT: u32 = 6;
 
 // --- 输入模式位（GetConsoleMode 的输入句柄那一套）---
 const ENABLE_PROCESSED_INPUT: u32 = 0x0001; // Ctrl+C 交给我们当字节，不要转成信号
@@ -162,6 +173,29 @@ impl Drop for ConsoleGuard {
     }
 }
 
+/// 控制台控制事件（Ctrl+Break、关窗口、注销、关机）的处理程序。
+///
+/// 这几条是**唯一**绕过 `exit_clean()` 的退出路径，而且全都真实存在：
+/// `ENABLE_PROCESSED_INPUT` 被清掉之后 Ctrl+C 不再产生 CTRL_C_EVENT（它要当
+/// 0x03 转发给 PTY），真实控制台句柄的 `stdin.read()` 也几乎不会返回 `Ok(0)`，
+/// 所以 `pump` 里那条 `!stdin_open` 分支实际到不了 —— 用户剩下的退出手段就是
+/// Ctrl+Break / 关窗口 / 任务管理器。
+///
+/// 在 WT 标签页里这无害（控制台跟着一起死），但在 `termhost-popout.cmd` 的
+/// 普通控制台回退分支里，bridge 跑的是**调用者自己的控制台** —— 不还原就等于
+/// 把用户的 shell 留成无回显、无行输入。所以这里无条件先还原。
+///
+/// 返回 FALSE（0）= 不吞掉事件，还原之后让默认处理继续，该终止就终止
+/// （绝不能返回 TRUE，那会让关窗口/关机被无限期拖住）。
+unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> i32 {
+    match ctrl_type {
+        CTRL_C_EVENT | CTRL_BREAK_EVENT | CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT
+        | CTRL_SHUTDOWN_EVENT => restore_console(),
+        _ => {}
+    }
+    0
+}
+
 /// 先还原控制台，再退出。所有离开 main 的路径都走这里 ——
 /// `std::process::exit` 不跑析构函数，光靠 `ConsoleGuard` 不够。
 fn exit_clean(code: i32) -> ! {
@@ -243,6 +277,16 @@ fn install_console() -> ConsoleGuard {
         {
             let mut slot = SAVED.lock().unwrap_or_else(|e| e.into_inner());
             *slot = Some(saved);
+        }
+
+        // 原值已经落盘，立刻装上控制事件处理程序：Ctrl+Break / 关窗口这些路径
+        // 不走 exit_clean，也不跑析构，只能靠它还原。
+        if SetConsoleCtrlHandler(Some(console_ctrl_handler), 1) == 0 {
+            eprintln!(
+                "termhost-bridge: SetConsoleCtrlHandler failed: {} — \
+                 Ctrl+Break or closing the window may leave the console in raw mode",
+                last_error()
+            );
         }
 
         if let Some((h, mode)) = apply.0 {
@@ -343,6 +387,10 @@ const DAEMON_PIPE: &str = r"\\.\pipe\termhost-pty-v1";
 
 const SIZE_POLL_INTERVAL: Duration = Duration::from_millis(400);
 
+/// 等 daemon 回执的上限。回执只是礼数（见 `claim_size`），等不到就放手。
+const CLAIM_ACK_TIMEOUT: Duration = Duration::from_millis(1000);
+const CLAIM_ACK_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
 /// 当前可见窗口的 `(cols, rows)`；不在控制台上时返回 `None`。
 fn console_size() -> Option<(u16, u16)> {
     unsafe {
@@ -387,13 +435,35 @@ fn claim_size(id: &str, cols: u16, rows: u16) -> std::io::Result<()> {
     pipe.write_all(&frame)?;
     pipe.flush()?;
 
-    // 读掉一帧再关：否则我们这边先关，daemon 那边的写入会撞上 ERROR_NO_DATA，
-    // 白白让它的一条连接任务报错退出。读到的可能是回执，也可能是推流 —— 都无所谓。
-    let mut len = [0u8; 4];
-    if pipe.read_exact(&mut len).is_ok() {
-        let n = u32::from_le_bytes(len) as usize;
-        let mut discard = vec![0u8; n.min(1 << 20)];
-        let _ = pipe.read_exact(&mut discard);
+    // 帧发出去了就算主张成功：daemon 的 Resize 分支是**先 resize 再回执**的
+    // （main.rs 的 Resize arm），所以回执只是给它一个"写成功"的机会，我们并不看
+    // 内容；我们这边先关连接会让它的写入撞上 ERROR_NO_DATA，平白让一条连接任务
+    // 报错退出，所以才顺手读一下。
+    //
+    // 读必须是**有上限**的：Resize 会 await `PtyHostClient::request`，而那里的
+    // `rx.await` 没有超时（pty_client.rs:101），pty-host 卡住时 daemon 就一直不回。
+    // 无超时的 read_exact 会把调用方（尺寸轮询线程）永远钉死，于是这个窗口的尺寸
+    // 主张从此再也不会更新 —— 正是本功能要消灭的那种静默挂死。用 PeekNamedPipe
+    // 问一声再读，超时就放弃这一轮（下个 tick 会重来）。
+    let handle = pipe.as_raw_handle() as HANDLE;
+    let deadline = Instant::now() + CLAIM_ACK_TIMEOUT;
+    let mut discard = [0u8; 256];
+    loop {
+        let mut avail: u32 = 0;
+        if unsafe {
+            PeekNamedPipe(handle, ptr::null_mut(), 0, ptr::null_mut(), &mut avail, ptr::null_mut())
+        } == 0
+        {
+            break; // 连接断了，无所谓 —— 请求已经发出去了
+        }
+        if avail > 0 {
+            let _ = pipe.read(&mut discard);
+            break;
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(CLAIM_ACK_POLL_INTERVAL);
     }
     Ok(())
 }
@@ -403,27 +473,36 @@ fn claim_size(id: &str, cols: u16, rows: u16) -> std::io::Result<()> {
 /// 故意不去解析 INPUT_RECORD 的窗口事件：那要求把 `ENABLE_WINDOW_INPUT` 打开、
 /// 再把非按键记录从字节流里挑出去，而尺寸声明根本不是热路径 —— 几百毫秒的
 /// 延迟换掉一整类"把窗口事件当按键发给 PTY"的 bug，很划算。
-fn poll_size(id: String, mut last: Option<(u16, u16)>) {
+///
+/// **这个线程是尺寸主张的唯一入口**（包括第一次）：它绝不跑在 `pump` 之前的
+/// 关键路径上，所以 claim 里的任何阻塞都换不来一个"窗口全黑"的弹出窗。
+/// `last` 记的是**上一次真正主张成功的尺寸**，不是测量到的尺寸 —— 主张失败时
+/// 必须保持 `None`，否则第一次失败之后这个线程会认为"已经主张过了"而永远跳过，
+/// PTY 就整场停在旧尺寸上按错误宽度折行，只能靠用户手动拖一下窗口来救。
+fn poll_size(id: String) {
+    let mut last: Option<(u16, u16)> = None;
     let mut warned = false;
     loop {
-        std::thread::sleep(SIZE_POLL_INTERVAL);
-        let Some(size) = console_size() else { continue };
-        if last == Some(size) {
-            continue;
-        }
-        match claim_size(&id, size.0, size.1) {
-            Ok(()) => {
-                last = Some(size);
-                warned = false;
-            }
-            Err(e) => {
-                // 只报一次：daemon 没在跑的时候别每 400ms 刷一行
-                if !warned {
-                    eprintln!("termhost-bridge: could not claim {size:?} for {id}: {e}");
-                    warned = true;
+        // 先主张再睡：线程一起来就按当前尺寸对齐，PTY 不必等一个轮询周期
+        if let Some(size) = console_size() {
+            if last != Some(size) {
+                match claim_size(&id, size.0, size.1) {
+                    Ok(()) => {
+                        last = Some(size);
+                        warned = false;
+                    }
+                    Err(e) => {
+                        // 只报一次：daemon 没在跑的时候别每 400ms 刷一行。
+                        // last 保持 None，下一个 tick 会重试。
+                        if !warned {
+                            eprintln!("termhost-bridge: could not claim {size:?} for {id}: {e}");
+                            warned = true;
+                        }
+                    }
                 }
             }
         }
+        std::thread::sleep(SIZE_POLL_INTERVAL);
     }
 }
 
@@ -460,12 +539,51 @@ fn read_stdin(tx: std::sync::mpsc::Sender<Vec<u8>>) {
     }
 }
 
+/// `buf[..n]` 里可以安全交给控制台的长度。
+///
+/// 控制台是**按每次 WriteFile 独立解码**的（代码页 65001）：一次写到一半的
+/// UTF-8 序列没有合法表示，conhost 会把它渲染成 U+FFFD，而且那半个序列已经
+/// 被吃掉了，下一次写过来的后续字节同样解不出来 —— 一个汉字变成两个乱码方块。
+/// 而 `raw_pipe.rs` 连上来第一件事就是把整个存量缓冲（上限 8 MB）一次性写出来，
+/// 所以首屏**必然**要跨过大量 8192 字节边界。
+///
+/// 返回值和 `n` 之间那段（长度 ≤ 3）是残缺的尾序列，交给调用方留到下一次写。
+fn complete_utf8_prefix(buf: &[u8], n: usize) -> usize {
+    // UTF-8 序列最长 4 字节，所以只看最后 3 个字节就够了
+    let floor = n.saturating_sub(3);
+    let mut i = n;
+    while i > floor {
+        i -= 1;
+        let b = buf[i];
+        if b & 0xC0 != 0x80 {
+            // 不是续字节 —— 这里是某个序列的首字节（或 ASCII）
+            let len = match b {
+                0x00..=0x7F => 1,
+                0xC0..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                0xF0..=0xF7 => 4,
+                // 非法首字节（0x80..=0xBF 已在上面排除，这里是 0xF8..=0xFF）：
+                // 不猜，原样交出去
+                _ => return n,
+            };
+            return if i + len <= n { n } else { i };
+        }
+    }
+    // 连续 4 个以上续字节：不是合法 UTF-8，原样交出去，别在这里卡住
+    n
+}
+
 /// 唯一碰管道句柄的线程：既发键盘输入，也收终端输出。
 fn pump(mut pipe: std::fs::File, rx: Receiver<Vec<u8>>) -> std::io::Result<()> {
     let handle = pipe.as_raw_handle() as HANDLE;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     let mut buf = vec![0u8; 8192];
+    // 上一轮扣下的、跨在缓冲区边界上的半个 UTF-8 序列：就住在 `buf[0..pending]`，
+    // 下一轮读进来的字节接在它后面。**必须留在 buf 里**（当初写成独立的 Vec，
+    // 读的时候忘了把字节搬回 buf 头部，于是 buf[0] 是上一轮的陈旧字节 —— 被
+    // 当作 carry 写了出去，真正的半个字符反而丢了；跨边界单测抓到了这个）。
+    let mut pending = 0usize;
     let mut stdin_open = true;
 
     loop {
@@ -498,14 +616,21 @@ fn pump(mut pipe: std::fs::File, rx: Receiver<Vec<u8>>) -> std::io::Result<()> {
             return Err(last_error());
         }
         if avail > 0 {
-            let n = pipe.read(&mut buf)?;
+            // buf[0..pending] 是上一轮留着的前缀，新数据接在它后面
+            let n = pipe.read(&mut buf[pending..])?;
             if n == 0 {
                 return Ok(());
             }
-            out.write_all(&buf[..n])?;
+            let total = pending + n;
+            // 残缺的尾序列扣住不写：控制台按每次写独立解码 UTF-8，切开就是乱码
+            let safe = complete_utf8_prefix(&buf[..total], total);
+            out.write_all(&buf[..safe])?;
             // Rust 的 stdout 是行缓冲：不含换行的输出（提示符、进度条、TUI）
             // 必须显式 flush，否则要等到下一个换行才看得见。
             out.flush()?;
+            // 把没写出去的半截挪到缓冲最前面（copy_within 是 memmove，重叠安全）
+            buf.copy_within(safe..total, 0);
+            pending = total - safe;
             continue; // 立刻回头再查一次，把积压的输出读干净
         }
 
@@ -557,19 +682,13 @@ fn main() {
         }
     };
 
-    // 先按当前窗口尺寸主张一次，让 PTY 在首屏画出来之前就对齐。
-    let initial_size = console_size();
-    if let Some((cols, rows)) = initial_size {
-        if let Err(e) = claim_size(&id, cols, rows) {
-            eprintln!(
-                "termhost-bridge: could not claim {cols}x{rows} for {id} (I/O still works): {e}"
-            );
-        }
-    }
-
+    // 尺寸主张全部交给轮询线程（含第一次），而且**必须**在 pump 之前只花一次
+    // spawn 的时间：claim 要经 daemon 转 pty-host，链路上任何一环卡住都能把它
+    // 拖上很久，同步跑在这里就等于让窗口一直什么都不显示 —— 比报错更糟。
+    // 轮询线程一起来就先主张一次，所以 PTY 仍然在首屏之前对齐。
     {
         let id = id.clone();
-        std::thread::spawn(move || poll_size(id, initial_size));
+        std::thread::spawn(move || poll_size(id));
     }
 
     // 键盘走独立线程（stdin 是另一个句柄），管道句柄只交给 pump 一个线程
@@ -614,7 +733,9 @@ mod tests {
         assert!(!valid(std::ptr::null_mut()));
     }
 
-    /// 控制台的默认输入模式（行输入 + 回显 + Ctrl+C 转信号 + 鼠标 + 快速编辑）
+    /// 位运算测试是**自指**的：`TYPICAL_INPUT_MODE` 用同一批常量拼出来，
+    /// 所以它能证明"清位/置位的逻辑对"，但**证明不了常量本身是对的值**。
+    /// 常量的值由下面 `mode_constants_match_wincon_h` 逐个对着 wincon.h 钉住。
     const TYPICAL_INPUT_MODE: u32 = ENABLE_PROCESSED_INPUT
         | ENABLE_LINE_INPUT
         | ENABLE_ECHO_INPUT
@@ -622,6 +743,88 @@ mod tests {
         | ENABLE_WINDOW_INPUT
         | ENABLE_QUICK_EDIT_MODE
         | 0x0010_0000; // 无关的位，必须原样留着
+
+    /// 常量值直接照 wincon.h 抄成字面量：任何一处被改错都会在这里断掉。
+    /// （改 bridge.rs 里的定义时，这个测试必须**一起**改 —— 这正是它的用途。）
+    #[test]
+    fn mode_constants_match_wincon_h() {
+        // 输入
+        assert_eq!(ENABLE_PROCESSED_INPUT, 0x0001);
+        assert_eq!(ENABLE_LINE_INPUT, 0x0002);
+        assert_eq!(ENABLE_ECHO_INPUT, 0x0004);
+        assert_eq!(ENABLE_WINDOW_INPUT, 0x0008);
+        assert_eq!(ENABLE_MOUSE_INPUT, 0x0010);
+        assert_eq!(ENABLE_QUICK_EDIT_MODE, 0x0040);
+        assert_eq!(ENABLE_EXTENDED_FLAGS, 0x0080);
+        assert_eq!(ENABLE_VIRTUAL_TERMINAL_INPUT, 0x0200);
+        // 输出
+        assert_eq!(ENABLE_PROCESSED_OUTPUT, 0x0001);
+        assert_eq!(ENABLE_VIRTUAL_TERMINAL_PROCESSING, 0x0004);
+        // 控制事件
+        assert_eq!(CTRL_C_EVENT, 0);
+        assert_eq!(CTRL_BREAK_EVENT, 1);
+        assert_eq!(CTRL_CLOSE_EVENT, 2);
+        assert_eq!(CTRL_LOGOFF_EVENT, 5);
+        assert_eq!(CTRL_SHUTDOWN_EVENT, 6);
+        // 其它
+        assert_eq!(STD_INPUT_HANDLE, (-10i32) as u32);
+        assert_eq!(STD_OUTPUT_HANDLE, (-11i32) as u32);
+        assert_eq!(UTF8_CODE_PAGE, 65001);
+    }
+
+    /// 结构体按 wincon.h 手抄，布局错了 GetConsoleScreenBufferInfo 会往错误的
+    /// 偏移写。22 = 4(COORD) + 4(COORD) + 2(WORD) + 8(SMALL_RECT) + 4(COORD)。
+    #[test]
+    fn screen_buffer_info_layout_matches_wincon_h() {
+        assert_eq!(std::mem::size_of::<Coord>(), 4);
+        assert_eq!(std::mem::size_of::<SmallRect>(), 8);
+        assert_eq!(std::mem::size_of::<ConsoleScreenBufferInfo>(), 22);
+        assert_eq!(std::mem::align_of::<ConsoleScreenBufferInfo>(), 2);
+    }
+
+    #[test]
+    fn utf8_prefix_keeps_ascii_whole() {
+        let buf = b"hello";
+        assert_eq!(complete_utf8_prefix(buf, buf.len()), 5);
+    }
+
+    /// 4 个汉字的 UTF-8 是 12 字节；在第 10 个字节处切断会落在一个字中间
+    /// （"中" = E4 B8 AD，"文" = E6 96 87）
+    #[test]
+    fn utf8_prefix_holds_back_a_split_character() {
+        let s = "中文中文".as_bytes();
+        assert_eq!(s.len(), 12);
+        for cut in 1..s.len() {
+            let safe = complete_utf8_prefix(s, cut);
+            assert!(safe <= cut);
+            assert!(
+                std::str::from_utf8(&s[..safe]).is_ok(),
+                "cut={cut} safe={safe} 不是合法的 UTF-8 前缀"
+            );
+            // 扣住的部分不许超过一个序列
+            assert!(cut - safe <= 3, "cut={cut} safe={safe} 扣得太多了");
+        }
+    }
+
+    #[test]
+    fn utf8_prefix_holds_back_a_split_four_byte_character() {
+        let s = "😀".as_bytes(); // F0 9F 98 80
+        assert_eq!(s.len(), 4);
+        assert_eq!(complete_utf8_prefix(s, 1), 0);
+        assert_eq!(complete_utf8_prefix(s, 2), 0);
+        assert_eq!(complete_utf8_prefix(s, 3), 0);
+        assert_eq!(complete_utf8_prefix(s, 4), 4);
+    }
+
+    #[test]
+    fn utf8_prefix_does_not_stall_on_invalid_bytes() {
+        // 4 个以上续字节不是合法 UTF-8：原样交出去，不许扣住
+        let buf = [0x80u8, 0x80, 0x80, 0x80, 0x80];
+        assert_eq!(complete_utf8_prefix(&buf, buf.len()), 5);
+        // 非法首字节同理
+        let buf = [b'a', 0xFF];
+        assert_eq!(complete_utf8_prefix(&buf, buf.len()), 2);
+    }
 
     #[test]
     fn raw_input_mode_clears_the_processing_bits() {

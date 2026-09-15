@@ -12,6 +12,12 @@ REM （也就是命令跑之前）就展开了，退出码会永远是 0。
 
 setlocal
 
+REM 环境变量优先于 argv 是 bridge 的既定顺序（作者的 termhost-bridge-wrapper.cmd
+REM 就是这么把 id 传进去的），所以这里必须**无条件**清掉它: 否则调用者的 shell
+REM 里若已经有 TERMHOST_TERM_ID，`termhost-popout.cmd <另一个 id>` 会静默弹出
+REM 环境变量里那个终端。本脚本一律只通过参数传 id。
+set "TERMHOST_TERM_ID="
+
 REM 取脚本自身目录，所以整个仓库挪到哪儿都还能用
 set "BRIDGE=%~dp0daemon\target\release\termhost-bridge.exe"
 
@@ -28,18 +34,16 @@ REM 优先 Windows Terminal: -- 之后的内容全部原样传给 exe
 where wt.exe >nul 2>nul
 if errorlevel 1 goto fallback
 
-wt.exe new-tab -- "%BRIDGE%" %1
+wt.exe new-tab -- "%BRIDGE%" "%~1"
 if errorlevel 1 goto fallback
 exit /b 0
 
 :noargs
-REM 不带 id: 让桥接程序自己去列终端。先清掉可能从当前 shell 继承来的 id，
-REM 否则会把用户没指定的那个终端弹出来。
-set "TERMHOST_TERM_ID="
+REM 不带 id: 让桥接程序自己去列终端
 "%BRIDGE%"
 exit /b %ERRORLEVEL%
 
 :fallback
 REM 没有 wt.exe（或者它起不来）: 直接跑，系统会给它分配一个普通控制台窗口
-"%BRIDGE%" %1
+"%BRIDGE%" "%~1"
 exit /b %ERRORLEVEL%
