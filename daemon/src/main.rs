@@ -567,12 +567,26 @@ async fn handle_request(state: &Arc<DaemonState>, req: DaemonRequest) -> Option<
             None
         }
 
-        DaemonRequest::Resize { seq, id, .. } => {
-            // Sizes belong to the phone entirely. Desktop resize requests are
-            // ignored — the PTY only follows WS (phone) resizes. (The desktop
-            // app may still run for file/workspace features, but it never
-            // controls terminal size.)
-            let _ = id;
+        DaemonRequest::Resize { seq, id, cols, rows } => {
+            // The desktop is a real viewer now — it owns the size like any other
+            // client. Mirrors the WS ("resize") arm in ws_server.rs exactly:
+            // apply → record → re-size the screen parser → lock → broadcast, so
+            // every other client follows. Whoever interacted last owns the size.
+            if state.pty().resize(&id, cols, rows).await.is_ok() {
+                state.active_clients.lock().unwrap().insert(id.clone(), "desktop".to_string());
+                state.terminal_sizes.lock().unwrap().insert(id.clone(), (cols, rows));
+                state.screen_manager.lock().unwrap().resize(&id, rows, cols);
+                // The desktop owns the size from now on — pty-host pins it and
+                // reverts any external re-assert.
+                let _ = state.pty().lock_size(&id, cols, rows).await;
+                let _ = state.broadcast_tx.send(BroadcastMsg::TerminalResized { id: id.clone(), cols, rows });
+                // Hand control over explicitly. The phone forwards its own
+                // resizes only while it believes it owns the terminal, so
+                // without this it would immediately re-fit and shrink the PTY
+                // back — the ws forwarder turns this into `resize_rejected`,
+                // which drops the phone to passive (canonical grid, scaled).
+                let _ = state.broadcast_tx.send(BroadcastMsg::TerminalControlLost { id });
+            }
             Some(DaemonResponse::Ok { seq })
         }
 
