@@ -231,7 +231,7 @@ export default function MarkdownPreview({ content, filePath }: Props) {
           className={`${s.mdToolBtn} ${translated ? s.mdToolBtnActive : ""}`}
           onClick={handleTranslatePage}
           disabled={translating}
-          title={translated ? "Show original" : `Translate to ${lang === "uk" ? "EN" : "UK"}`}
+          title={translated ? "显示原文" : `翻译成 ${lang === "uk" ? "EN" : "UK"}`}
         >
           {translating ? (
             <span className={s.mdSpinner} />
@@ -240,7 +240,7 @@ export default function MarkdownPreview({ content, filePath }: Props) {
               <path d="M4.545 6.714L4.11 8H3l1.862-5h1.284L8 8H6.833l-.434-1.286H4.545zm.417-1.239h1.137L5.57 3.956h-.04l-.568 1.52zM0 2a2 2 0 012-2h7a2 2 0 012 2v3h3a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-3H2a2 2 0 01-2-2V2zm2-1a1 1 0 00-1 1v7a1 1 0 001 1h7a1 1 0 001-1V2a1 1 0 00-1-1H2zm7.138 9.995c.193.166.53.038.53-.27V7.017a1 1 0 011 .983V14a1 1 0 01-1 1H5.017a1 1 0 01-.983-1h5.104z" />
             </svg>
           )}
-          {translated ? "Original" : "Translate"}
+          {translated ? "原文" : "翻译"}
         </button>
       </div>
       <div

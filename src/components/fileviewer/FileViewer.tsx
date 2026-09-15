@@ -16,7 +16,7 @@ export default function FileViewer() {
   if (fileTabs.length === 0) return (
     <div className={s.container}>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 13 }}>
-        Open a file from Files tab
+        从「文件」标签页打开一个文件
       </div>
     </div>
   );
@@ -54,7 +54,7 @@ export default function FileViewer() {
           );
         })}
         <button className={s.closeAll} onClick={closeAll}>
-          Close All
+          全部关闭
         </button>
       </div>
       <div className={s.content}>
@@ -69,7 +69,7 @@ export default function FileViewer() {
             <Suspense
               fallback={
                 <div style={{ padding: 16, color: "var(--text-dim)", fontSize: 13 }}>
-                  Loading editor…
+                  正在加载编辑器…
                 </div>
               }
             >
