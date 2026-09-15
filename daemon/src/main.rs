@@ -179,6 +179,9 @@ fn load_or_create_token() -> String {
 }
 
 fn main() {
+    // 必须最先装：tracing 写 stdout，而 stdout 指向一个刻意隐藏的控制台。
+    termhostd::panic_log::install("termhostd");
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::builder()
@@ -256,16 +259,20 @@ fn main() {
     tray::run_tray(state);
 }
 
-async fn daemon_main(state: Arc<DaemonState>) {
-    // Connect to pty-host FIRST — spawns it if it isn't already running, and
-    // reattaches any terminals it already owns (e.g. this daemon restarted
-    // while pty-host kept running from before). Everything below assumes
-    // state.pty() works, so this must complete before anything else starts.
-    let pty_host_exe = pty_host_exe_path();
+/// The two pty-host push callbacks.
+///
+/// A function rather than inline closures because a reconnect has to supply them
+/// again: `connect`/`reconnect` take them per call, and building them here is what
+/// keeps them wired to `DaemonState`.
+fn pty_host_callbacks(
+    state: &Arc<DaemonState>,
+) -> (
+    impl Fn(String, String) + Send + Sync + 'static,
+    impl Fn(String) + Send + Sync + 'static,
+) {
     let state_out = state.clone();
     let state_exit = state.clone();
-    match PtyHostClient::connect(
-        &pty_host_exe,
+    (
         move |id, data| {
             // Sizes are owned by the phone (pty-host locks them) — the live
             // width-detection hack is gone: it grew terminal_sizes from
@@ -280,27 +287,26 @@ async fn daemon_main(state: Arc<DaemonState>) {
             state_exit.buffer_manager.lock().unwrap().remove(&id);
             state_exit.screen_manager.lock().unwrap().remove(&id);
             state_exit.terminal_infos.lock().unwrap().retain(|t| t.id != id);
-            let _ = state_exit.broadcast_tx.send(BroadcastMsg::TerminalsChanged);
             state_exit.terminal_sizes.lock().unwrap().remove(&id);
             state_exit.remote_allowed.lock().unwrap().remove(&id);
+            state_exit.active_clients.lock().unwrap().remove(&id);
+            let _ = state_exit.broadcast_tx.send(BroadcastMsg::TerminalsChanged);
             state_exit.activity.notify_one();
         },
     )
-    .await
-    {
-        Ok(client) => {
-            let _ = state.pty_client.set(client);
-        }
-        Err(e) => {
-            tracing::error!("FATAL: could not connect to pty-host ({}): {e}", pty_host_exe.display());
-            std::process::exit(1);
-        }
-    }
+}
 
+/// Register the terminals pty-host already owns.
+///
+/// At startup this is what brings terminals back when only the daemon restarted:
+/// pty-host keeps running, so its terminals must be re-listed. After a reconnect
+/// the list is normally empty — a fresh pty-host owns nothing.
+async fn reattach_terminals(state: &Arc<DaemonState>) {
     let existing = state.pty().list().await;
-    if !existing.is_empty() {
-        tracing::info!("Reattaching {} terminal(s) already running in pty-host", existing.len());
+    if existing.is_empty() {
+        return;
     }
+    tracing::info!("Reattaching {} terminal(s) already running in pty-host", existing.len());
     for t in existing {
         let label = if t.command.is_empty() {
             format!("PS: {}", t.cwd.rsplit(['\\', '/']).find(|s| !s.is_empty()).unwrap_or("shell"))
@@ -318,12 +324,112 @@ async fn daemon_main(state: Arc<DaemonState>) {
             workspace: String::new(),
             allow_remote: false,
         });
-        let _ = state.broadcast_tx.send(BroadcastMsg::TerminalsChanged);
         state.terminal_sizes.lock().unwrap().insert(t.id.clone(), (t.cols, t.rows));
         state.remote_allowed.lock().unwrap().insert(t.id.clone());
         state.buffer_manager.lock().unwrap().create(&t.id);
         state.screen_manager.lock().unwrap().create(&t.id, t.rows, t.cols);
     }
+    let _ = state.broadcast_tx.send(BroadcastMsg::TerminalsChanged);
+}
+
+/// Connect to pty-host (spawning it if needed), then pick up whatever it owns.
+/// Must complete before anything else runs — everything below assumes
+/// `state.pty()` works.
+async fn attach_pty_host(state: &Arc<DaemonState>) -> Result<(), String> {
+    let pty_host_exe = pty_host_exe_path();
+    let (on_output, on_exit) = pty_host_callbacks(state);
+    let client = PtyHostClient::connect(&pty_host_exe, on_output, on_exit)
+        .await
+        .map_err(|e| format!("{}: {e}", pty_host_exe.display()))?;
+    let _ = state.pty_client.set(client);
+    reattach_terminals(state).await;
+    Ok(())
+}
+
+/// Forget every terminal pty-host owned.
+///
+/// pty-host owns the PTYs, so its death takes all of them. Leaving them listed
+/// would have the UI offer terminals that no longer exist — and `hasTerminal`
+/// would lie, which is what makes panes respawn.
+fn forget_all_terminals(state: &Arc<DaemonState>) {
+    let ids: Vec<String> = state
+        .terminal_infos
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|t| t.id.clone())
+        .collect();
+    state.terminal_infos.lock().unwrap().clear();
+    for id in &ids {
+        state.buffer_manager.lock().unwrap().remove(id);
+        state.screen_manager.lock().unwrap().remove(id);
+        state.active_clients.lock().unwrap().remove(id);
+    }
+    state.terminal_sizes.lock().unwrap().clear();
+    state.remote_allowed.lock().unwrap().clear();
+    let _ = state.broadcast_tx.send(BroadcastMsg::TerminalsChanged);
+}
+
+/// Watch for pty-host's death and rebuild the connection.
+///
+/// Without this a dead pty-host left the daemon up and answering every spawn with
+/// "管道正在被关闭 (os error 232)" — for 10 hours, once — because the daemon only
+/// exits when pty-host is unreachable *at startup*. Reconnecting keeps the daemon
+/// (and the phone's access to it) alive; the terminals it lost are gone either way.
+async fn supervise_pty_host(state: Arc<DaemonState>) {
+    loop {
+        state.pty().died().await;
+        termhostd::panic_log::log_line(
+            "termhostd",
+            "pty-host died - resetting terminal state and reconnecting",
+        );
+        forget_all_terminals(&state);
+
+        // pty-host may be crash-looping (it aborted twice at the same code
+        // offset), so back off rather than spin.
+        let mut delay = std::time::Duration::from_millis(500);
+        loop {
+            match reconnect_pty_host(&state).await {
+                Ok(()) => {
+                    termhostd::panic_log::log_line("termhostd", "pty-host reconnected");
+                    break;
+                }
+                Err(e) => {
+                    termhostd::panic_log::log_line(
+                        "termhostd",
+                        &format!("pty-host reconnect failed: {e} - retrying in {delay:?}"),
+                    );
+                    tokio::time::sleep(delay).await;
+                    delay = (delay * 2).min(std::time::Duration::from_secs(30));
+                }
+            }
+        }
+    }
+}
+
+async fn reconnect_pty_host(state: &Arc<DaemonState>) -> Result<(), String> {
+    let pty_host_exe = pty_host_exe_path();
+    let (on_output, on_exit) = pty_host_callbacks(state);
+    state
+        .pty()
+        .reconnect(&pty_host_exe, on_output, on_exit)
+        .await
+        .map_err(|e| e.to_string())?;
+    reattach_terminals(state).await;
+    Ok(())
+}
+
+async fn daemon_main(state: Arc<DaemonState>) {
+    if let Err(e) = attach_pty_host(&state).await {
+        tracing::error!("FATAL: could not connect to pty-host: {e}");
+        termhostd::panic_log::log_line("termhostd", &format!("FATAL: could not connect to pty-host: {e}"));
+        std::process::exit(1);
+    }
+
+    // pty-host can also die *after* startup; the daemon must not stay up without
+    // it. See supervise_pty_host.
+    let state_sup = state.clone();
+    tokio::spawn(async move { supervise_pty_host(state_sup).await });
 
     let state_idle = state.clone();
     tokio::spawn(async move {

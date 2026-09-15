@@ -82,6 +82,11 @@ fn acquire_single_instance() -> bool {
 }
 
 fn main() {
+    // 必须最先装：本进程 stderr 指向一个刻意隐藏的控制台，panic 信息否则就丢了。
+    // 这个进程曾 panic 两次（0xC0000409 / subcode 7 = abort），而我们只有 WER 里的
+    // 异常码，没有消息、没有文件、没有行号。见 panic_log 的模块说明。
+    termhostd::panic_log::install("pty-host");
+
     if !acquire_single_instance() {
         // 已有实例在跑 —— 静默退出，客户端会连上那个实例
         return;

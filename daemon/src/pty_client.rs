@@ -10,7 +10,7 @@ use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::net::windows::named_pipe::ClientOptions;
-use tokio::sync::{oneshot, Mutex as TokioMutex};
+use tokio::sync::{oneshot, Mutex as TokioMutex, Notify};
 
 /// 不给子进程分配控制台窗口。
 ///
@@ -22,10 +22,72 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 type PendingMap = Arc<StdMutex<HashMap<u64, oneshot::Sender<PtyHostEvent>>>>;
 
+/// Pump one connection: route `Output`/`Exited` to the callbacks and answer
+/// requests by seq, until the pipe closes.
+///
+/// On close (= pty-host died) three things must happen, in this order:
+/// fail every in-flight request, record it, and wake the daemon's supervisor.
+fn spawn_reader<R, F, E>(reader: R, pending: PendingMap, on_output: F, on_exit: E, dead: Arc<Notify>)
+where
+    R: tokio::io::AsyncRead + Send + Unpin + 'static,
+    F: Fn(String, String) + Send + Sync + 'static,
+    E: Fn(String) + Send + Sync + 'static,
+{
+    tokio::spawn(async move {
+        let mut reader = reader;
+        loop {
+            let frame = match read_frame(&mut reader).await {
+                Ok(Some(f)) => f,
+                _ => break,
+            };
+            let ev: PtyHostEvent = match serde_json::from_slice(&frame) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            match ev {
+                PtyHostEvent::Output { id, data } => on_output(id, data),
+                PtyHostEvent::Exited { id } => on_exit(id),
+                other => {
+                    let seq = match &other {
+                        PtyHostEvent::SpawnResult { seq, .. }
+                        | PtyHostEvent::Ok { seq }
+                        | PtyHostEvent::Error { seq, .. }
+                        | PtyHostEvent::ListResult { seq, .. }
+                        | PtyHostEvent::ScreenResult { seq, .. } => *seq,
+                        _ => continue,
+                    };
+                    if let Some(tx) = pending.lock().unwrap().remove(&seq) {
+                        let _ = tx.send(other);
+                    }
+                }
+            }
+        }
+
+        // Dropping the senders makes every waiting `rx.await` return at once with
+        // "pty-host connection lost". Without this the caller hangs forever: the
+        // requests have no timeout.
+        pending.lock().unwrap().clear();
+        crate::panic_log::log_line(
+            "termhostd",
+            "pty-host connection lost - every terminal it owned is gone",
+        );
+        tracing::error!("pty-host connection lost");
+        dead.notify_one();
+    });
+}
+
 pub struct PtyHostClient {
-    writer: Arc<TokioMutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>>,
+    /// `None` while pty-host is gone. Swappable so the same client object can be
+    /// reconnected in place — `DaemonState.pty_client` is a `OnceCell`, so
+    /// replacing the whole client isn't an option.
+    writer: Arc<TokioMutex<Option<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>>>,
     pending: PendingMap,
     next_seq: AtomicU64,
+    /// Signalled when the reader task sees the pipe close, i.e. pty-host died.
+    /// The daemon's supervisor awaits this and rebuilds the connection — without
+    /// it, a dead pty-host left the daemon answering every spawn with "pipe is
+    /// being closed" for as long as it stayed up (it stayed up 10 hours once).
+    dead: Arc<Notify>,
 }
 
 impl PtyHostClient {
@@ -38,46 +100,46 @@ impl PtyHostClient {
         F: Fn(String, String) + Send + Sync + 'static,
         E: Fn(String) + Send + Sync + 'static,
     {
+        let client = Self {
+            writer: Arc::new(TokioMutex::new(None)),
+            pending: Arc::new(StdMutex::new(HashMap::new())),
+            next_seq: AtomicU64::new(1),
+            dead: Arc::new(Notify::new()),
+        };
+        client.attach(pty_host_exe, on_output, on_exit).await?;
+        Ok(client)
+    }
+
+    /// Connect (spawning pty-host if it isn't running), point the writer at the
+    /// new pipe, and start a reader for it. Shared by `connect` and `reconnect`.
+    async fn attach<F, E>(&self, pty_host_exe: &std::path::Path, on_output: F, on_exit: E) -> std::io::Result<()>
+    where
+        F: Fn(String, String) + Send + Sync + 'static,
+        E: Fn(String) + Send + Sync + 'static,
+    {
         let pipe = Self::connect_pipe(pty_host_exe).await?;
         let (reader, writer) = tokio::io::split(pipe);
-        let writer: Box<dyn tokio::io::AsyncWrite + Send + Unpin> = Box::new(writer);
-        let writer = Arc::new(TokioMutex::new(writer));
-        let pending: PendingMap = Arc::new(StdMutex::new(HashMap::new()));
+        *self.writer.lock().await = Some(Box::new(writer));
+        spawn_reader(reader, self.pending.clone(), on_output, on_exit, self.dead.clone());
+        Ok(())
+    }
 
-        let pending_task = pending.clone();
-        tokio::spawn(async move {
-            let mut reader = reader;
-            loop {
-                let frame = match read_frame(&mut reader).await {
-                    Ok(Some(f)) => f,
-                    _ => break,
-                };
-                let ev: PtyHostEvent = match serde_json::from_slice(&frame) {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
-                match ev {
-                    PtyHostEvent::Output { id, data } => on_output(id, data),
-                    PtyHostEvent::Exited { id } => on_exit(id),
-                    other => {
-                        let seq = match &other {
-                            PtyHostEvent::SpawnResult { seq, .. }
-                            | PtyHostEvent::Ok { seq }
-                            | PtyHostEvent::Error { seq, .. }
-                            | PtyHostEvent::ListResult { seq, .. }
-                            | PtyHostEvent::ScreenResult { seq, .. } => *seq,
-                            _ => continue,
-                        };
-                        if let Some(tx) = pending_task.lock().unwrap().remove(&seq) {
-                            let _ = tx.send(other);
-                        }
-                    }
-                }
-            }
-            tracing::error!("pty-host connection lost");
-        });
+    /// Rebuild the connection after pty-host died. Reuses this object on purpose:
+    /// `DaemonState.pty_client` is a `OnceCell`, so a fresh client couldn't be
+    /// installed. The caller re-supplies the callbacks, which is also what keeps
+    /// them wired to `DaemonState`.
+    pub async fn reconnect<F, E>(&self, pty_host_exe: &std::path::Path, on_output: F, on_exit: E) -> std::io::Result<()>
+    where
+        F: Fn(String, String) + Send + Sync + 'static,
+        E: Fn(String) + Send + Sync + 'static,
+    {
+        self.attach(pty_host_exe, on_output, on_exit).await
+    }
 
-        Ok(Self { writer, pending, next_seq: AtomicU64::new(1) })
+    /// Resolves once pty-host's connection drops. Safe to call after the fact:
+    /// `notify_one` leaves a permit behind when nobody is waiting yet.
+    pub async fn died(&self) {
+        self.dead.notified().await;
     }
 
     async fn connect_pipe(pty_host_exe: &std::path::Path) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeClient> {
@@ -106,10 +168,18 @@ impl PtyHostClient {
 
     async fn request(&self, seq: u64, req: PtyHostRequest) -> std::io::Result<PtyHostEvent> {
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(seq, tx);
         {
-            let mut w = self.writer.lock().await;
-            write_frame(&mut *w, &req).await?;
+            let mut guard = self.writer.lock().await;
+            // Say something specific rather than blocking: with no writer there is
+            // no pty-host, and the caller's error surfaces in the UI.
+            let Some(w) = guard.as_mut() else {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotConnected,
+                    "pty-host is not connected",
+                ));
+            };
+            self.pending.lock().unwrap().insert(seq, tx);
+            write_frame(w, &req).await?;
         }
         rx.await.map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pty-host connection lost"))
     }
@@ -137,8 +207,10 @@ impl PtyHostClient {
         let req = PtyHostRequest::Write { id: id.to_string(), data: data.to_string() };
         let writer = self.writer.clone();
         tokio::spawn(async move {
-            let mut w = writer.lock().await;
-            let _ = write_frame(&mut *w, &req).await;
+            let mut guard = writer.lock().await;
+            if let Some(w) = guard.as_mut() {
+                let _ = write_frame(w, &req).await;
+            }
         });
     }
 

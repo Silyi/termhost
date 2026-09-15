@@ -6,6 +6,7 @@
 pub mod error;
 pub mod screen;
 pub mod buffer;
+pub mod panic_log;
 
 #[cfg(target_os = "windows")]
 pub mod pty_client;
