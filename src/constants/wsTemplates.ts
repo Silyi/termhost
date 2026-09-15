@@ -11,7 +11,7 @@ const CODEX_CMD = "codex --yolo";
 
 export const BUILTIN_TEMPLATES: WsTemplate[] = [
   {
-    name: "Claude + Shell",
+    name: "Claude + 终端",
     builtin: true,
     panes: [
       { cwd: "", command: CLAUDE_CMD },
@@ -37,7 +37,7 @@ export const BUILTIN_TEMPLATES: WsTemplate[] = [
     ],
   },
   {
-    name: "Codex + Shell",
+    name: "Codex + 终端",
     builtin: true,
     panes: [
       { cwd: "", command: CODEX_CMD },
@@ -45,7 +45,7 @@ export const BUILTIN_TEMPLATES: WsTemplate[] = [
     ],
   },
   {
-    name: "Agent + Server + Shell",
+    name: "智能体 + 服务器 + 终端",
     builtin: true,
     panes: [
       { cwd: "", command: CLAUDE_CMD },

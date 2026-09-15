@@ -81,7 +81,7 @@ export const THEMES: Record<string, XtermTheme> = {
     brightWhite: "#F2F2F2",
   },
   eyecare: {
-    name: "Eye Care",
+    name: "护眼",
     background: "#181818",
     foreground: "#b0b0b0",
     cursor: "#61afef",
@@ -106,7 +106,7 @@ export const THEMES: Record<string, XtermTheme> = {
     brightWhite: "#d7dae0",
   },
   daylight: {
-    name: "Daylight",
+    name: "日光",
     background: "#f0ebe1",
     foreground: "#3b3228",
     cursor: "#d45a68",
@@ -131,7 +131,7 @@ export const THEMES: Record<string, XtermTheme> = {
     brightWhite: "#3b3228",
   },
   light: {
-    name: "Light",
+    name: "浅色",
     background: "#ffffff",
     foreground: "#1e1e1e",
     cursor: "#e94560",
