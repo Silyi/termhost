@@ -49,6 +49,7 @@ fn to_screen_result(seq: u64, snap: (String, u16, u16)) -> PtyHostEvent {
 extern "system" {
     fn CreateMutexW(attrs: *mut u8, initial_owner: i32, name: *const u16) -> *mut u8;
     fn GetLastError() -> u32;
+    fn SetLastError(dw_err_code: u32);
 }
 
 const ERROR_ALREADY_EXISTS: u32 = 183;
@@ -57,6 +58,10 @@ const ERROR_ALREADY_EXISTS: u32 = 183;
 fn acquire_single_instance() -> bool {
     let name: Vec<u16> = PTY_HOST_MUTEX_NAME.encode_utf16().collect();
     unsafe {
+        // CreateMutexW 成功新建时不清理线程 last-error；残留的 183 会让首实例误判为
+        // "已有实例"而静默退出 —— 而客户端只在首次失败时 spawn 一次，于是 daemon
+        // 的 30 次重试全败，直接 FATAL 退出。先清零。
+        SetLastError(0);
         let h = CreateMutexW(ptr::null_mut(), 0, name.as_ptr());
         if h.is_null() {
             // 创建不了互斥体就不阻止启动 —— 若环境缺少创建 `Global\` 内核对象的
@@ -92,7 +97,7 @@ fn main() {
 }
 
 /// 客户端连接的写端。承载**已序列化的整帧**（4 字节 LE 长度 + JSON），
-/// 这样一份输出可以零拷贝地发给所有连接。
+/// 因此一份输出只需序列化一次，之后向各连接复制同一份字节（是 clone，不是零拷贝）。
 type ClientTx = UnboundedSender<Vec<u8>>;
 
 pub struct Shared {
@@ -188,7 +193,15 @@ fn spawn_terminal(
     let id_exit = id.to_string();
     let out_exit = sh.out.clone();
 
-    let inst = create_pty(
+    // screen/buffers 必须在 create_pty **之前**建好：create_pty 一启动子进程，它的读
+    // 线程就可能立刻投递 Out::Data，而分发任务的 Data 分支不持 lifecycle —— 若此时
+    // 表里还没有这个 id，append_by_id/feed_by_id 会静默丢弃，早期输出（横幅、首个
+    // 提示符、OSC 标记）就永远进不了缓冲与屏幕。
+    // ScreenManager 的 create 签名是 (id, rows, cols) —— 注意顺序
+    sh.screen.lock().unwrap().create(id, rows, cols);
+    sh.buffers.lock().unwrap().create(id);
+
+    let inst = match create_pty(
         cwd,
         command,
         cols,
@@ -199,13 +212,17 @@ fn spawn_terminal(
         move || {
             let _ = out_exit.send(Out::Exit(id_exit.clone(), generation));
         },
-    )
-    .map_err(|e| e.to_string())?;
+    ) {
+        Ok(i) => i,
+        Err(e) => {
+            // 建 PTY 失败：回滚刚建的两张表，否则会留下没有 PTY 的空壳条目
+            sh.screen.lock().unwrap().remove(id);
+            sh.buffers.lock().unwrap().remove(id);
+            return Err(e.to_string());
+        }
+    };
 
     sh.pty.lock().unwrap().register(id.to_string(), inst);
-    // ScreenManager 的 create 签名是 (id, rows, cols) —— 注意顺序
-    sh.screen.lock().unwrap().create(id, rows, cols);
-    sh.buffers.lock().unwrap().create(id);
     // 记下 cwd/command：List 要把它们回放给 daemon，否则 daemon 重启后
     // 重连的终端会丢失标签与工作目录（daemon 那边只有本进程收到过这两个值）
     sh.meta.lock().unwrap().insert(
@@ -492,6 +509,8 @@ async fn serve(sh: Arc<Shared>, rx: tokio::sync::mpsc::UnboundedReceiver<Out>) -
         // 而"终端活过 daemon 重启"正是本进程存在的理由。重建实例后继续。
         if let Err(e) = server.connect().await {
             eprintln!("pty-host: pipe connect failed ({e}); recreating the instance");
+            // 退避一下：一个反复"连上即断"的客户端否则会让这个循环热转并刷屏 stderr
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             server = ServerOptions::new()
                 .pipe_mode(PipeMode::Byte)
                 .create(PTY_HOST_PIPE_NAME)?;
