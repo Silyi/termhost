@@ -1,7 +1,41 @@
 import { useWorkspaceStore } from "./workspaceStore";
 import { usePanelStore } from "./panelStore";
-import { useTerminalStore, workspaceTrees, terminalRefs } from "./terminalStore";
-import { instantiateTree, attachPaneToTree, getTerminalOrderFromTree } from "../hooks/useSplitTree";
+import { useTerminalStore, workspaceTrees, terminalRefs, getTerminalIdsForWorkspace } from "./terminalStore";
+import { instantiateTree, attachPaneToTree, removePaneFromTree, getTerminalOrderFromTree } from "../hooks/useSplitTree";
+
+/** 把一个终端从布局里**移出**，但**不杀**它。
+ *
+ *  用于「弹出为独立窗口」：终端搬到独立窗口后，界面里再留一个窗格既冗余，
+ *  又埋一个陷阱 —— 关掉那个窗格会连带杀掉独立窗口（`handleClose` 会 kill）。
+ *  TerminalInstance 的卸载清理只销毁本地 xterm，不碰 PTY，所以移出是安全的。
+ *
+ *  必须持久化：存档 `splitTree` 里若还留着这个窗格 id，下次启动会按 id 把它
+ *  原样拉回来，于是刚弹出的终端又会凭空多出一个。 */
+export function detachTerminalFromLayout(termId: string): void {
+  const wsStore = useWorkspaceStore.getState();
+  const terminalStore = useTerminalStore.getState();
+
+  for (const [wsIdx, tree] of workspaceTrees) {
+    if (!getTerminalOrderFromTree(tree).includes(termId)) continue;
+
+    const newRoot = removePaneFromTree(tree, termId);
+    if (newRoot) {
+      workspaceTrees.set(wsIdx, newRoot);
+      terminalStore.bumpWsTreeVersion();
+      wsStore.saveCurrentSplitTree(newRoot, [], terminalRefs, wsIdx);
+      const ids = getTerminalIdsForWorkspace(wsIdx);
+      if (ids.length > 0) terminalStore.setFocusedTerminalId(ids[0]);
+    } else {
+      // 它是这个工作区的最后一个窗格。**不要**学 handleClose 用 panesToTree 补一个
+      // 占位叶节点 —— 那会带着新生成的 id 去 spawn 一个全新终端，等于用户一弹出
+      // 就凭空多出一个空终端。改为把这个工作区的布局清空。
+      workspaceTrees.delete(wsIdx);
+      terminalStore.bumpWsTreeVersion();
+      wsStore.saveCurrentSplitTree(null, [], terminalRefs, wsIdx);
+    }
+    return;
+  }
+}
 
 /** 把一个已存在的终端接进当前 workspace 的布局并切到终端视图。
  *  终端由 daemon 持有，这里只负责"给它一个可见的窗格" ——

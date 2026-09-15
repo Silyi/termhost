@@ -9,6 +9,7 @@
 - [tech-stack.md](architecture/tech-stack.md) — Tauri 2 + React + TypeScript + Zustand + CSS Modules
 - [split-tree-layout.md](architecture/split-tree-layout.md) — binary tree pane layout, zoom/maximize, focus nav, resize
 - [android-app.md](architecture/android-app.md) — native Android app with Foreground Service + WebView
+- [popout-raw-pipe.md](architecture/popout-raw-pipe.md) — 弹出为独立控制台窗口：bridge 二进制、raw pipe、UI 入口与约束
 
 ## decisions/
 
@@ -26,6 +27,8 @@
 - [frontend-monolith.md](gotchas/frontend-monolith.md) — RESOLVED: migrated to React components
 - [xterm-css-pitfalls.md](gotchas/xterm-css-pitfalls.md) — global CSS reset breaks cursor coords, scrollbar 15px fallback, zoom issues
 - [xterm-scrollbar-strategy.md](gotchas/xterm-scrollbar-strategy.md) — 1px invisible scrollbar trick, focused-pane scrollbar, bg matching
+- [pty-host-console-window.md](gotchas/pty-host-console-window.md) — 关掉 pty-host 的控制台窗口会杀掉所有终端；spawn 必须带 CREATE_NO_WINDOW
+- [orphan-terminals-accumulate.md](gotchas/orphan-terminals-accumulate.md) — 「新建终端」只 spawn 不挂载 → 游离终端永久累积；id 含创建时间是判据
 
 ## domain/
 

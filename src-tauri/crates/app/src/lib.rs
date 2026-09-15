@@ -66,6 +66,52 @@ async fn kill_terminal(state: State<'_, AppState>, id: String) -> Result<(), Str
     }
 }
 
+/// 把一个终端弹出到**独立的控制台窗口**里。
+///
+/// 机制在 `daemon/src/bridge.rs`：bridge 连上该终端的 raw pipe，把字节直接转发给
+/// 一个真正的控制台，于是这个终端看起来、用起来都像正常的 cmd 窗口。本命令只负责
+/// 挑一个宿主窗口把它拉起来 —— 在此之前这个能力只有一个命令行脚本
+/// （`termhost-popout.cmd`），界面里没有任何入口。
+#[tauri::command]
+fn popout_terminal(id: String) -> Result<(), String> {
+    let dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("No parent dir")?
+        .to_path_buf();
+    let bridge = dir.join("termhost-bridge.exe");
+    if !bridge.exists() {
+        return Err(format!(
+            "找不到 {} —— 它必须和 termhost.exe 放在同一目录",
+            bridge.display()
+        ));
+    }
+
+    // 优先 Windows Terminal，并强制**新窗口**（-w new）：默认的 new-tab 会挤进
+    // 已有的 WT 窗口，那就谈不上「独立出来」了。
+    // wt.exe 自身是控制台程序 —— 不加 CREATE_NO_WINDOW 就会像 pty-host 一样凭空
+    // 多出一个能被误关的黑窗口（见 .memory/gotchas/pty-host-console-window.md）。
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let launched = std::process::Command::new("wt.exe")
+        .args(["-w", "new", "new-tab", "--"])
+        .arg(&bridge)
+        .arg(&id)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .is_ok();
+    if launched {
+        return Ok(());
+    }
+
+    // 没有 wt.exe 就退回让系统分配一个普通控制台窗口。这里**不能**带
+    // CREATE_NO_WINDOW —— bridge 必须在真实控制台里跑，否则弹出来什么都看不见。
+    std::process::Command::new(&bridge)
+        .arg(&id)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("弹出终端失败: {e}"))
+}
+
 #[tauri::command]
 async fn has_terminal(state: State<'_, AppState>, id: String) -> Result<bool, String> {
     let seq = state.daemon.next_seq();
@@ -528,8 +574,12 @@ fn launch_daemon_exe() -> Result<(), String> {
         // Production: no job object around us — direct spawn.
         // CREATE_NEW_PROCESS_GROUP (0x200) — daemon gets its own process group
         // CREATE_BREAKAWAY_FROM_JOB (0x01000000) — escape a job if there is one
-        // We avoid DETACHED_PROCESS (0x8) because it breaks the Win32 message loop needed for tray icon.
-        const FLAGS_BREAKAWAY: u32 = 0x00000200 | 0x01000000;
+        // CREATE_NO_WINDOW (0x08000000) — the daemon is a console binary and we have
+        //   no console, so Windows would otherwise hand it a visible console window.
+        //   A user closing that window kills the daemon and every terminal under it
+        //   (pty-host goes down with it). Hidden console, not DETACHED_PROCESS: the
+        //   latter is what breaks the Win32 message loop the tray icon needs.
+        const FLAGS_BREAKAWAY: u32 = 0x00000200 | 0x01000000 | 0x0800_0000;
         match std::process::Command::new(&daemon_exe).creation_flags(FLAGS_BREAKAWAY).spawn() {
             Ok(_) => Ok(()),
             // Job denies breakaway — go through WMI so the daemon ends up outside the job
@@ -709,6 +759,7 @@ pub fn run() {
             write_terminal,
             resize_terminal,
             kill_terminal,
+            popout_terminal,
             has_terminal,
             get_terminal_buffer,
             get_terminal_screen,

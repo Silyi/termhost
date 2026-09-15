@@ -25,6 +25,11 @@ export async function killTerminal(id: string): Promise<void> {
   return invoke("kill_terminal", { id });
 }
 
+/** 把这个终端弹到一个独立的控制台窗口（bridge 连它的 raw pipe 转发字节）。 */
+export async function popoutTerminal(id: string): Promise<void> {
+  return invoke("popout_terminal", { id });
+}
+
 export async function hasTerminal(id: string): Promise<boolean> {
   return invoke("has_terminal", { id });
 }

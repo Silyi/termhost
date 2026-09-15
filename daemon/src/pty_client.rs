@@ -6,10 +6,19 @@
 
 use crate::pty_ipc::{read_frame, write_frame, PtyHostEvent, PtyHostRequest, PtyHostTerminalInfo, PTY_HOST_PIPE_NAME};
 use std::collections::HashMap;
+use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::net::windows::named_pipe::ClientOptions;
 use tokio::sync::{oneshot, Mutex as TokioMutex};
+
+/// 不给子进程分配控制台窗口。
+///
+/// 缺了它，pty-host（Rust 控制台程序）在 daemon 这个无控制台的父进程下会被
+/// Windows **分配一个独立的可见窗口**。用户看到那个窗口、随手关掉它，就等于
+/// 杀掉 pty-host —— 而 pty-host 是**所有终端的主人**，它一死，名下的终端全部
+/// 消失，此后每一次 spawn 都会失败。用户于是看到「新建终端点了没反应」。
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 type PendingMap = Arc<StdMutex<HashMap<u64, oneshot::Sender<PtyHostEvent>>>>;
 
@@ -81,7 +90,11 @@ impl PtyHostClient {
                 Err(e) if e.raw_os_error() == Some(2) /* ERROR_FILE_NOT_FOUND */ => {
                     if attempt == 0 {
                         tracing::info!("pty-host not running, starting it: {:?}", pty_host_exe);
-                        let _ = std::process::Command::new(pty_host_exe).spawn();
+                        // CREATE_NO_WINDOW 不可省 —— 见该常量的说明：pty-host 若带出
+                        // 可见控制台窗口，用户关掉它就会连同所有终端一起杀掉。
+                        let _ = std::process::Command::new(pty_host_exe)
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn();
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 }

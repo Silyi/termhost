@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePanelStore } from "../../store/panelStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
-import { listTerminals, killTerminal, spawnTerminal } from "../../hooks/useTauriIpc";
-import { openExistingTerminal } from "../../store/openTerminal";
+import { listTerminals, killTerminal, spawnTerminal, popoutTerminal, resizeTerminal } from "../../hooks/useTauriIpc";
+import { openExistingTerminal, detachTerminalFromLayout } from "../../store/openTerminal";
+import { terminalRefs } from "../../store/terminalStore";
 import s from "./Pages.module.css";
 
 interface TermInfo {
@@ -25,12 +26,21 @@ export default function AllTerminals() {
   const ensureWorkspaceTree = useRef<((idx: number) => void) | null>(null);
   const [terms, setTerms] = useState<TermInfo[]>([]);
   const [spawning, setSpawning] = useState(false);
+  // 两个错误分开放：refresh 每 3 秒成功一次，若共用一个槽位，它会把
+  // 「新建终端失败」的提示顺手清掉 —— 提示只闪一下，等于没说。
+  const [listError, setListError] = useState<string | null>(null);
+  // 用户主动操作的失败（新建 / 弹出）走这个槽位
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const list = await listTerminals();
       setTerms(list);
-    } catch {}
+      setListError(null);
+    } catch (e) {
+      // 不能静默：列表读不出来时界面会一直显示旧数据，看起来像「没反应」。
+      setListError(`读取终端列表失败：${String(e)}`);
+    }
   }, []);
 
   useEffect(() => {
@@ -50,12 +60,41 @@ export default function AllTerminals() {
 
   const handleNewTerminal = async () => {
     setSpawning(true);
+    setActionError(null);
     try {
       // Use home dir, default shell
       const id = makeId();
       await spawnTerminal(id, "", "", 80, 24);
-      // Broadcast will trigger refresh
-    } catch {}
+
+      // 必须把它接进布局。只 spawn 不挂载会留下一个**游离终端**：它不在任何
+      // 工作区里，既不会被存档引用、也没有任何回收路径，而 pty-host 不随 app
+      // 退出而结束 —— 于是每建一个就永久多攒一个，用户看到的就是
+      // 「每轮启动比上轮多 1 个」。
+      openExistingTerminal(id);
+
+      // 接进来走的是「附着」路径（hasTerminal 为真 → 画快照），那条路刻意
+      // 不 re-fit（见 TerminalInstance 里 393-398 的说明）。这里补一次实测
+      // 尺寸，免得新终端停在 spawn 时的 80×24。窗格挂载是异步的
+      // （setup 里还有 await），所以轮询几拍等 ref 出现。
+      let tries = 0;
+      const syncSize = () => {
+        const ref = terminalRefs.get(id);
+        if (!ref) {
+          if (tries++ < 20) window.setTimeout(syncSize, 100);
+          return;
+        }
+        ref.fitAddon.fit();
+        if (ref.term.cols > 0 && ref.term.rows > 0) {
+          resizeTerminal(id, ref.term.cols, ref.term.rows).catch(() => {});
+        }
+      };
+      window.setTimeout(syncSize, 100);
+    } catch (e) {
+      // 这里曾经是个空 catch。代价很大：pty-host 被关掉后 spawn 必然失败，
+      // 而界面不给任何信号，于是「点击无反应」既看不出原因也查不到线索。
+      setActionError(`新建终端失败：${String(e)}`);
+      console.error("[新建终端] spawn failed:", e);
+    }
     setSpawning(false);
   };
 
@@ -91,6 +130,18 @@ export default function AllTerminals() {
           </div>
         </div>
 
+        {actionError && (
+          <div style={{ marginBottom: 16, padding: "10px 12px", borderRadius: 6, background: "rgba(224,80,80,0.1)", border: "1px solid rgba(224,80,80,0.25)", color: "#e05050", fontSize: 12, lineHeight: 1.5 }}>
+            {actionError}
+          </div>
+        )}
+
+        {listError && (
+          <div style={{ marginBottom: 16, padding: "10px 12px", borderRadius: 6, background: "rgba(224,80,80,0.1)", border: "1px solid rgba(224,80,80,0.25)", color: "#e05050", fontSize: 12, lineHeight: 1.5 }}>
+            {listError}
+          </div>
+        )}
+
         {terms.length === 0 ? (
           <div style={{ fontSize: 13, opacity: 0.4, textAlign: "center", marginTop: 60 }}>
             没有正在运行的终端。用 <strong>+ 新建终端</strong> 建一个，或在手机上建。
@@ -110,6 +161,22 @@ export default function AllTerminals() {
                   <div style={{ fontSize: 11, opacity: 0.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{t.cwd}</div>
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.25, fontFamily: "monospace" }}>{t.command || "powershell"}</div>
+                <button onClick={async (e) => {
+                  e.stopPropagation();
+                  setActionError(null);
+                  try {
+                    await popoutTerminal(t.id);
+                    // 成功才移出窗格（终端本身继续跑，只是不在布局里了）。
+                    // 这一行同时会清掉存档里的窗格 id —— 否则下次启动会把它拉回来。
+                    detachTerminalFromLayout(t.id);
+                  } catch (err) {
+                    setActionError(`弹出终端失败：${String(err)}`);
+                  }
+                }}
+                  title="在一个独立的控制台窗口里打开这个终端（会把它从布局里移出，终端继续运行）"
+                  style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4, padding: "3px 10px", color: "#fff", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                  弹出
+                </button>
                 <button onClick={async (e) => { e.stopPropagation(); await killTerminal(t.id); refresh(); }}
                   style={{ background: "rgba(224,80,80,0.1)", border: "1px solid rgba(224,80,80,0.2)", borderRadius: 4, padding: "3px 10px", color: "#e05050", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
                   终止

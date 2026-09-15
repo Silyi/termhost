@@ -416,7 +416,14 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
             }
           } catch {}
         }, 100);
-      } catch {}
+      } catch (e) {
+        // 这里曾经是空的 —— spawn 失败（典型情形：pty-host 已被杀掉）只留下一个
+        // 全白的窗格，用户完全看不出发生了什么。
+        try {
+          term.write(`\r\n\x1b[31m终端启动失败：${String(e)}\x1b[0m\r\n`);
+        } catch {}
+        console.error(`[终端 ${id}] 初始化失败:`, e);
+      }
     };
 
     setup();

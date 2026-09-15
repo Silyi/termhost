@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useTerminalStore, terminalRefs } from "../../store/terminalStore";
 import { useFileViewerStore } from "../../store/fileViewerStore";
-import { getHomeDir, writeFile } from "../../hooks/useTauriIpc";
+import { getHomeDir, writeFile, popoutTerminal } from "../../hooks/useTauriIpc";
+import { detachTerminalFromLayout } from "../../store/openTerminal";
 import s from "./Terminal.module.css";
 
 interface Props {
@@ -88,6 +89,7 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
   const fullPath = title || lastDir || cwd || "";
   const dir = getDir(title, lastDir || cwd);
   const [showAdd, setShowAdd] = useState(false);
+  const [popoutError, setPopoutError] = useState<string | null>(null);
 
   const exportLog = async () => {
     const ref = terminalRefs.get(id);
@@ -119,7 +121,7 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
         {/* Add terminal */}
         {!isZoomed && (
           <div style={{ position: "relative" }}>
-            <button className={s.action} title="新建终端" onClick={(e) => { e.stopPropagation(); setShowAdd(!showAdd); }} onMouseDown={(e) => e.stopPropagation()}>
+            <button className={s.action} title="拆分窗格" onClick={(e) => { e.stopPropagation(); setShowAdd(!showAdd); }} onMouseDown={(e) => e.stopPropagation()}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                 <path d="M8 3v10M3 8h10" />
               </svg>
@@ -135,6 +137,30 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
             )}
           </div>
         )}
+
+        {/* Pop out into a real, standalone console window */}
+        {popoutError && (
+          <span title={popoutError} style={{ color: "#e05050", fontSize: 10, whiteSpace: "nowrap" }}>
+            弹出失败
+          </span>
+        )}
+        <button className={s.action} title="弹出为独立窗口（会把这个窗格移出布局，终端本身继续运行）" {...btn(() => {
+          setPopoutError(null);
+          popoutTerminal(id)
+            // 成功才移出窗格。失败时必须留着它 —— 否则终端在界面里就没了入口。
+            .then(() => detachTerminalFromLayout(id))
+            .catch((e) => {
+              // 不能静默：失败常见于 termhost-bridge.exe 没和 termhost.exe 放一起。
+              setPopoutError(String(e));
+              console.error("[弹出终端] 失败:", e);
+            });
+        })}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6.5 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V9.5" />
+            <polyline points="10 2 14 2 14 6" />
+            <line x1="14" y1="2" x2="7.5" y2="8.5" />
+          </svg>
+        </button>
 
         {/* Rearrange mode toggle */}
         {!isSinglePane && !isZoomed && (

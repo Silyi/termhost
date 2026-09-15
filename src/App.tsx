@@ -42,9 +42,14 @@ export default function App() {
     let tree;
     if (ws.splitTree) {
       tree = instantiateTree(ws.splitTree);
+    } else if (ws.panes.length > 0) {
+      tree = panesToTree(ws.panes);
     } else {
-      const panes = ws.panes.length > 0 ? ws.panes : [{ cwd: "", command: "" }];
-      tree = panesToTree(panes);
+      // 既没有存档也没有窗格 —— **不要**凭空造一个。panesToTree 会生成全新的 id，
+      // 于是挂载时 TerminalInstance 见 id 未知就去 spawn，用户凭空多出一个空终端。
+      // 保持「没有树」这个状态，界面会落到空态；这样「把所有终端都弹出去了」
+      // 之后工作区能真正空着，而不是下次启动又冒出一个。
+      return;
     }
     workspaceTrees.set(wsIdx, tree);
     bumpWsTreeVersion();
