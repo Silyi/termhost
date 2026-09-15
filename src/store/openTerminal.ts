@@ -1,6 +1,6 @@
 import { useWorkspaceStore } from "./workspaceStore";
 import { usePanelStore } from "./panelStore";
-import { useTerminalStore, workspaceTrees } from "./terminalStore";
+import { useTerminalStore, workspaceTrees, terminalRefs } from "./terminalStore";
 import { panesToTree, attachPaneToTree, getTerminalOrderFromTree } from "../hooks/useSplitTree";
 
 /** 把一个已存在的终端接进当前 workspace 的布局并切到终端视图。
@@ -9,29 +9,47 @@ import { panesToTree, attachPaneToTree, getTerminalOrderFromTree } from "../hook
 export function openExistingTerminal(termId: string): void {
   const wsStore = useWorkspaceStore.getState();
 
-  // 1) 一个 workspace 都没有 → 建一个
-  if (wsStore.workspaces.length === 0) {
-    wsStore.addWorkspace({ name: "终端", color: 0, panes: [{ cwd: "", command: "" }] });
+  // 1) 一个 workspace 都没有 → 建一个，splitTree 直接设成这个终端。
+  //    刻意不用 panes 建树：占位叶节点会被 TerminalInstance 当成未知 id 去 spawn，
+  //    用户会凭空多出一个空终端。
+  const created = wsStore.workspaces.length === 0;
+  if (created) {
+    wsStore.addWorkspace({
+      name: "终端",
+      color: 0,
+      panes: [],
+      splitTree: { type: "leaf", id: termId, cwd: "", command: "" },
+    });
   }
 
   const idx = useWorkspaceStore.getState().activeWorkspaceIdx;
-  const panes = useWorkspaceStore.getState().workspaces[idx]?.panes ?? [{ cwd: "", command: "" }];
 
-  // 2) 该 workspace 还没有树 → 按它的 panes 建一棵
-  let tree = workspaceTrees.get(idx) ?? panesToTree(panes);
-
-  // 3) 已经在这个布局里 → 只聚焦，不重复插入
-  //    （两个窗格接同一个 PTY 会互相抢尺寸）
-  if (getTerminalOrderFromTree(tree).includes(termId)) {
-    useTerminalStore.getState().setFocusedTerminalId(termId);
-    usePanelStore.getState().setActiveView("terminals");
-    return;
+  // 2) 拿到当前树；没有就建一棵。**此处立即落进 Map** —— 后面所有分支共用这个起点。
+  let tree = workspaceTrees.get(idx);
+  if (!tree) {
+    if (created) {
+      tree = { type: "leaf", id: termId };
+    } else {
+      const panes = useWorkspaceStore.getState().workspaces[idx]?.panes ?? [{ cwd: "", command: "" }];
+      tree = panesToTree(panes);
+    }
+    workspaceTrees.set(idx, tree);
   }
 
-  // 4) 接进布局：挂在第一个已存在的窗格旁边；树为空则自己当根
-  const anchor = getTerminalOrderFromTree(tree)[0];
-  const attached = anchor ? attachPaneToTree(tree, anchor, termId, "horizontal") : null;
-  workspaceTrees.set(idx, attached ?? { type: "leaf", id: termId });
+  // 3) 不在布局里才插入。已在布局里则原样保留（两个窗格接同一个 PTY 会互相抢尺寸）。
+  const order = getTerminalOrderFromTree(tree);
+  if (!order.includes(termId)) {
+    const anchor = order[0];
+    const attached = anchor ? attachPaneToTree(tree, anchor, termId, "horizontal") : null;
+    tree = attached ?? { type: "leaf", id: termId };
+  }
 
+  // 4) 单一出口：写 Map、触发重绘、持久化、聚焦、切视图。
+  //    与 App.tsx 里其它树改动一致（:49-52）—— 少了 save，新窗格重启就没了。
+  const terminalStore = useTerminalStore.getState();
+  workspaceTrees.set(idx, tree);
+  terminalStore.bumpWsTreeVersion();
+  wsStore.saveCurrentSplitTree(tree, getTerminalOrderFromTree(tree), terminalRefs, idx);
+  terminalStore.setFocusedTerminalId(termId);
   usePanelStore.getState().setActiveView("terminals");
 }
