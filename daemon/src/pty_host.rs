@@ -365,7 +365,8 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
     }
 }
 
-/// 把事件序列化成**整帧字节**，供向多个连接零拷贝分发。
+/// 把事件序列化成**整帧字节**：只序列化一次，之后向各连接复制同一份字节，
+/// 避免按客户端重复编码。（是 clone 字节，不是零拷贝。）
 async fn encode<T: serde::Serialize>(msg: &T) -> Option<Vec<u8>> {
     let mut buf = Vec::new();
     // tokio 为 Vec<u8> 实现了 AsyncWrite，可直接复用 write_frame
@@ -403,7 +404,10 @@ async fn dispatch_loop(sh: Arc<Shared>, mut rx: tokio::sync::mpsc::UnboundedRece
                             .get(&id)
                             .map_or(true, |t| t.elapsed() >= REVERT_THROTTLE);
                         if due {
-                            if let Ok(m) = sh.pty.lock().unwrap().get_master(&id) {
+                            // 先取出 master 再进 if let，避免 pty guard 被 scrutinee 临时量
+                            // 延长到整个块（与 handle_request 里三处同样处理）
+                            let master = sh.pty.lock().unwrap().get_master(&id);
+                            if let Ok(m) = master {
                                 let (cols, rows) = locked;
                                 let _ = m.lock().unwrap().resize(portable_pty::PtySize {
                                     rows, cols, pixel_width: 0, pixel_height: 0,
@@ -483,7 +487,16 @@ async fn serve(sh: Arc<Shared>, rx: tokio::sync::mpsc::UnboundedReceiver<Out>) -
         .create(PTY_HOST_PIPE_NAME)?;
 
     loop {
-        server.connect().await?;
+        // connect 失败绝不能顺着 `?` 把整个 host 送命：一个连上就断的客户端
+        // （命名管道的 ERROR_NO_DATA）会让它名下的全部 PTY 一起消失 ——
+        // 而"终端活过 daemon 重启"正是本进程存在的理由。重建实例后继续。
+        if let Err(e) = server.connect().await {
+            eprintln!("pty-host: pipe connect failed ({e}); recreating the instance");
+            server = ServerOptions::new()
+                .pipe_mode(PipeMode::Byte)
+                .create(PTY_HOST_PIPE_NAME)?;
+            continue;
+        }
         let connected = server;
         server = ServerOptions::new()
             .pipe_mode(PipeMode::Byte)
