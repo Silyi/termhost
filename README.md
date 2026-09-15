@@ -10,6 +10,15 @@ Built for the age of AI coding agents: the most common use case is **controlling
 
 ---
 
+> ### 🔱 This is a fork
+>
+> Upstream: **[rviach/termhost](https://github.com/rviach/termhost)** (formerly `viachq/termhost`), by **viachq** — MIT licensed.
+> The project, its design, and most of the codebase are their work. This fork builds on top of it;
+> [what changed here](#fork-changes) is listed below. The README above is upstream's, with the
+> architecture and roadmap updated where this fork moved them.
+
+---
+
 ## What you get
 
 ### 🖥️ A real terminal workspace on the desktop
@@ -22,7 +31,7 @@ Built for the age of AI coding agents: the most common use case is **controlling
 
 ### 🔌 Terminals that survive
 
-All PTYs are owned by a small Rust daemon (`termhostd`), not by the app window. Close the app, restart it during development, crash the UI — your shells and running agents keep going. Reopen the window and reattach. The daemon sits in the tray and can keep the machine awake while remote access is on.
+All PTYs are owned by a separate, small Rust process (`pty-host`), not by the app window and not even by the daemon. Close the app, restart it during development, crash the UI, **or restart and upgrade the daemon** — your shells and running agents keep going. Reopen the window and reattach. The daemon sits in the tray and can keep the machine awake while remote access is on.
 
 ### 📱 Your terminals on your phone
 
@@ -50,28 +59,69 @@ No relay servers, no telemetry, no account. Self-hosted in the most literal sens
 ## How it works
 
 ```
-┌────────────── your PC ──────────────┐
-│                                     │
-│  termhost.exe (Tauri 2 + React)     │
-│  desktop workspace UI               │
-│        │ named pipe IPC             │
-│  termhostd.exe ──────────────┐      │
-│  Rust daemon in the tray     │      │
-│  • owns every PTY (ConPTY)   │      │
-│  • vt100 screen per terminal │      │
-│  • token auth                │      │
-│  • warp WS/HTTP server :9090 │      │
-└──────────────────────────────┼──────┘
-                               │ WebSocket
-                 LAN · Tailscale · Cloudflare Tunnel
-                               │
-                ┌──────────────┴─────────────┐
-                │  phone / tablet / any PC   │
-                │  PWA (React + xterm.js)    │
-                └────────────────────────────┘
+┌──────────────── your PC ─────────────────┐
+│                                          │
+│  termhost.exe (Tauri 2 + React)          │
+│  desktop workspace UI                    │
+│         │ named pipe IPC                 │
+│  termhostd.exe                           │
+│  Rust daemon in the tray                 │
+│  • vt100 screen per terminal             │
+│  • token auth                            │
+│  • warp WS/HTTP server :9090             │
+│         │ named pipe IPC                 │
+│  pty-host.exe                            │
+│  • owns every PTY (ConPTY)               │
+│  • survives daemon restarts              │
+└────────────────────┬─────────────────────┘
+                     │ WebSocket
+      LAN · Tailscale · Cloudflare Tunnel
+                     │
+     ┌───────────────┴───────────────┐
+     │ phone / tablet / any PC       │
+     │ PWA (React + xterm.js)        │
+     └───────────────────────────────┘
 ```
 
 The desktop UI is just another client of the daemon — which is why terminals outlive it, and why your phone sees exactly the same sessions.
+
+---
+
+## Fork changes
+
+What this fork adds on top of [upstream](https://github.com/rviach/termhost). Everything here is the
+fork's work; the rest of the project — including its design and the daemon/PWA architecture — is
+viachq's.
+
+### Architecture
+
+- **PTY ownership moved out of the daemon into its own process** (`pty-host.exe`) — the session-host
+  process the upstream roadmap called for. Terminals now survive a *daemon* restart or upgrade, not
+  just an app restart: the daemon reconnects to an already-running pty-host and reattaches the
+  terminals it finds there.
+
+### Features
+
+- **Pop a terminal out into a real console window** (`termhost-bridge.exe` over a raw byte pipe) — one
+  click in the pane header or in the terminal list puts that terminal into its own Windows Terminal
+  window, or a plain console window if WT isn't installed. Popping out detaches the pane from the
+  layout while the terminal itself keeps running.
+- **Open an already-running terminal from the "All Terminals" list** — including terminals created on
+  the phone. The pane attaches to the live PTY and repaints from the daemon's vt100 screen.
+- **Chinese localization** across the desktop UI (~21 files), plus visible labels on the previously
+  icon-only title-bar buttons.
+
+### Fixes
+
+- The daemon and pty-host are console binaries spawned by parents that have no console, so Windows
+  handed each of them a **visible** console window. Closing that window killed pty-host — the owner
+  of every PTY — and every terminal died with it; from then on every spawn failed, and the failure
+  was invisible. Both spawns now pass `CREATE_NO_WINDOW`.
+- **Failed spawns are no longer swallowed** by empty `catch` blocks: the error is shown in the
+  terminal list and written into the terminal pane.
+- **New terminals are attached to the workspace layout.** One used to be spawned but never referenced
+  by any layout, so nothing ever reclaimed it — and because pty-host outlives the app, exactly one
+  leaked per session.
 
 ---
 
@@ -80,7 +130,7 @@ The desktop UI is just another client of the daemon — which is why terminals o
 Prerequisites: Windows 10/11, [Node.js](https://nodejs.org) ≥ 20, [Rust](https://rustup.rs) stable.
 
 ```powershell
-git clone https://github.com/viachq/termhost
+git clone https://github.com/YOUR-GITHUB-USERNAME/termhost   # ← this fork; upstream is rviach/termhost
 cd termhost
 npm install
 npm run dev          # dev build: Tauri window + vite dev server
@@ -125,7 +175,7 @@ The gap termhost fills: projects in this space are either *a workspace* (cmux, w
 - [ ] Service worker → full offline-capable PWA install
 - [ ] Screen view — see the desktop, not just terminals
 - [ ] Connect to remote servers' daemons, not only the local PC
-- [ ] Terminals that survive daemon updates (session host process)
+- [x] Terminals that survive daemon updates (session host process) — **done in this fork** as `pty-host.exe`
 - [ ] Linux/macOS desktop build (Tauri is already cross-platform)
 
 ## Status
