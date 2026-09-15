@@ -69,6 +69,10 @@ pub enum DaemonRequest {
         seq: u32,
         id: String,
     },
+    GetScreen {
+        seq: u32,
+        id: String,
+    },
     ListTerminals {
         seq: u32,
     },
@@ -172,6 +176,9 @@ pub enum DaemonResponse {
     SpawnResult { seq: u32, id: String },
     HasResult { seq: u32, exists: bool },
     BufferData { seq: u32, id: String, data: String },
+    /// Current-screen vt100 snapshot (see `GetScreen`). `data: None` means there
+    /// is no screen for this id — the cols/rows then carry no meaning.
+    ScreenData { seq: u32, id: String, data: Option<String>, cols: u16, rows: u16 },
     TerminalList { seq: u32, terminals: Vec<TerminalInfo> },
     Output { id: String, data: String },
     /// Unsolicited: the shared PTY was resized by another client (e.g. a phone in

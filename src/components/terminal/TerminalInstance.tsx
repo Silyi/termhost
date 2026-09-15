@@ -10,7 +10,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../../store/settingsStore";
 import { useTerminalStore, terminalRefs } from "../../store/terminalStore";
 import { useFileViewerStore } from "../../store/fileViewerStore";
-import { spawnTerminal, writeTerminal, resizeTerminal, hasTerminal, getTerminalBuffer } from "../../hooks/useTauriIpc";
+import { spawnTerminal, writeTerminal, resizeTerminal, hasTerminal, getTerminalBuffer, getTerminalScreen } from "../../hooks/useTauriIpc";
 import s from "./Terminal.module.css";
 
 // Matches: C:\path\file.ts:42, .\rel\file.rs, src/App.tsx:10:5, file.ts:3
@@ -36,6 +36,21 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
     let resizeUnlisten: (() => void) | null = null;
     let resizeTimeout: number;
     let webglRetries = 0;
+
+    // --- attach-vs-spawn bookkeeping (see the attach branch in setup()) ---
+    // True once this mount attached to an already-running terminal and painted
+    // its vt100 snapshot at the PTY's NATIVE grid. While it is set the mount
+    // path must not re-fit: a fit/resize landing after the paint re-grids the
+    // xterm under a snapshot rendered for a different grid, which is exactly
+    // the ghost-cell mismatch the snapshot exists to avoid. Size ownership
+    // moves on user interaction (focus, a real layout resize, a font change),
+    // never on mount.
+    let paintedSnapshot = false;
+    // setup() has finished deciding attach-vs-spawn.
+    let mountSettled = false;
+    // The ResizeObserver's first callback is the mount observation (the layout
+    // settling), not the user resizing anything — see the observer below.
+    let firstResizeObs = true;
 
     const settings = useSettingsStore.getState();
     const term = new Terminal({
@@ -307,22 +322,66 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
 
         const exists = await hasTerminal(id);
         if (exists) {
+          // Attach to a terminal that is already running: paint its current
+          // screen from pty-host's vt100 parser instead of replaying the raw
+          // byte history — the replay re-runs every escape sequence and leaves
+          // ghost cells. Same sequence as the mobile client (App.tsx "screen").
+          let painted = false;
           try {
-            const buffer = await getTerminalBuffer(id);
-            if (buffer) {
+            const screen = await getTerminalScreen(id);
+            if (screen && screen.data) {
               el.style.visibility = "hidden";
-              await new Promise<void>((resolve) => {
-                term.write(buffer, resolve);
-              });
-              el.style.visibility = "";
+              try {
+                // Paint at the snapshot's NATIVE size — a mismatch (snapshot
+                // taken before/after a resize) leaves ghost cells from the
+                // previous frame.
+                if (screen.cols > 0 && screen.rows > 0) {
+                  term.resize(screen.cols, screen.rows);
+                }
+                term.reset();
+                await new Promise<void>((resolve) => {
+                  term.write(screen.data, resolve);
+                });
+              } finally {
+                el.style.visibility = "";
+              }
+              painted = true;
             }
           } catch {}
-          resizeTerminal(id, cols, rows).catch(() => {});
+          if (!painted) {
+            // No screen for this id (pty-host has no parser for it) — fall back
+            // to the raw history replay, i.e. the previous behaviour.
+            try {
+              const buffer = await getTerminalBuffer(id);
+              if (buffer) {
+                el.style.visibility = "hidden";
+                await new Promise<void>((resolve) => {
+                  term.write(buffer, resolve);
+                });
+                el.style.visibility = "";
+              }
+            } catch {}
+            // Only meaningful for the replay fallback: the PTY is re-asserted
+            // to this pane's size because the replayed bytes carry no grid.
+            resizeTerminal(id, cols, rows).catch(() => {});
+          }
+          // NOTE: after a clean snapshot paint we deliberately do NOT call
+          // resizeTerminal. The snapshot's grid IS the PTY's current size, so
+          // pushing the container's size would put the PTY and the painted grid
+          // out of step. The desktop takes the size on interaction (focus / a
+          // real layout resize), not on mount.
+          paintedSnapshot = painted;
         } else {
           await spawnTerminal(id, cwd, command, cols, rows);
         }
+        mountSettled = true;
 
-        // Second fit after DOM settles to catch any WebGL/layout discrepancy
+        // Second fit after DOM settles to catch any WebGL/layout discrepancy.
+        // Spawn only: on the attach path this fit would re-grid the xterm under
+        // the snapshot we just painted (and, now that the daemon honours desktop
+        // resizes, hand the PTY a size the paint never matched) — the ghosting
+        // we just removed.
+        if (paintedSnapshot) return;
         setTimeout(() => {
           if (killed) return;
           try {
@@ -357,6 +416,16 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
       if (killed) return;
       const rect = entries[0]?.contentRect;
       if (!rect || rect.width === 0 || rect.height === 0) return;
+      // The observer's first callback is the mount observation (layout
+      // settling), not the user resizing anything. Drop it when we attached
+      // and painted a snapshot — fitting there would re-grid the xterm under
+      // the paint and bring the ghost cells straight back. Also drop it while
+      // setup() is still deciding: the spawn path already fitted before
+      // spawning and gets its correcting fit when setup() finishes. Every
+      // later callback is a real layout change and behaves as before.
+      const isMountObservation = firstResizeObs;
+      firstResizeObs = false;
+      if (isMountObservation && (paintedSnapshot || !mountSettled)) return;
       clearTimeout(resizeTimeout);
       resizeTimeout = window.setTimeout(() => {
         if (killed) return;

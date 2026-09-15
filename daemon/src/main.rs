@@ -606,6 +606,16 @@ async fn handle_request(state: &Arc<DaemonState>, req: DaemonRequest) -> Option<
             Some(DaemonResponse::BufferData { seq, id, data })
         }
 
+        DaemonRequest::GetScreen { seq, id } => {
+            // The screen lives in pty-host (fed from the live stream, and it
+            // survives daemon restarts) — same source the mobile client paints
+            // from. None = no screen for this id; cols/rows are then meaningless.
+            match state.pty().screen(&id).await {
+                Some((data, cols, rows)) => Some(DaemonResponse::ScreenData { seq, id, data: Some(data), cols, rows }),
+                None => Some(DaemonResponse::ScreenData { seq, id, data: None, cols: 0, rows: 0 }),
+            }
+        }
+
         DaemonRequest::ListTerminals { seq } => {
             let mut terminals = state.terminal_infos.lock().unwrap().clone();
             let ws_data = state.workspace_data.lock().unwrap();

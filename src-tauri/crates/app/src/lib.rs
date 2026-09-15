@@ -87,6 +87,32 @@ async fn get_terminal_buffer(state: State<'_, AppState>, id: String) -> Result<S
     }
 }
 
+/// Current-screen snapshot for a terminal, taken from the same vt100 parser the
+/// mobile client paints from. `data` is the formatted current screen; `cols`
+/// /`rows` are the grid it was rendered for — the client must resize to that
+/// native size before writing it, or the paint leaves ghost cells.
+#[derive(Serialize)]
+struct ScreenPayload {
+    data: String,
+    cols: u16,
+    rows: u16,
+}
+
+#[tauri::command]
+async fn get_terminal_screen(state: State<'_, AppState>, id: String) -> Result<Option<ScreenPayload>, String> {
+    let seq = state.daemon.next_seq();
+    let resp = state.daemon.request(&DaemonRequest::GetScreen { seq, id }).await?;
+    match resp {
+        DaemonResponse::ScreenData { data, cols, rows, .. } => {
+            // None = the terminal exists but has no screen (e.g. pty-host has no
+            // parser for it) — the caller falls back to the raw buffer.
+            Ok(data.map(|data| ScreenPayload { data, cols, rows }))
+        }
+        DaemonResponse::Error { message, .. } => Err(message),
+        _ => Err("Unexpected response".into()),
+    }
+}
+
 #[tauri::command]
 async fn start_ws_server(state: State<'_, AppState>, port: u16) -> Result<String, String> {
     let seq = state.daemon.next_seq();
@@ -685,6 +711,7 @@ pub fn run() {
             kill_terminal,
             has_terminal,
             get_terminal_buffer,
+            get_terminal_screen,
             list_terminals,
             shutdown_daemon,
             restart_daemon,

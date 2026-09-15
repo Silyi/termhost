@@ -33,6 +33,21 @@ export async function getTerminalBuffer(id: string): Promise<string> {
   return invoke("get_terminal_buffer", { id });
 }
 
+export interface TerminalScreen {
+  data: string;
+  cols: number;
+  rows: number;
+}
+
+/**
+ * Current-screen vt100 snapshot. `null` = the terminal has no screen.
+ * Paint it via `term.resize(cols, rows)` → `term.reset()` → `term.write(data)`;
+ * writing it at any other grid size leaves ghost cells.
+ */
+export async function getTerminalScreen(id: string): Promise<TerminalScreen | null> {
+  return invoke("get_terminal_screen", { id });
+}
+
 export async function listDir(path: string): Promise<FileEntry[]> {
   return invoke("list_dir", { path });
 }
