@@ -277,7 +277,10 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
         }
         // 单向：客户端不登记 seq，不回执
         PtyHostRequest::Write { id, data } => {
-            if let Ok(w) = sh.pty.lock().unwrap().get_writer(&id) {
+            // 先把 writer 取到局部，让 pty 的 guard 在写入前就释放 —— write_all 在子进程
+            // 输入缓冲写满时会阻塞，若此时仍持 pty 锁，会连带卡住 Spawn/Kill/List/Resize。
+            let writer = sh.pty.lock().unwrap().get_writer(&id);
+            if let Ok(w) = writer {
                 use std::io::Write as _;
                 if let Ok(mut w) = w.lock() {
                     let _ = w.write_all(data.as_bytes());
