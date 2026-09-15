@@ -275,6 +275,74 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
         PtyHostRequest::List { seq } => {
             Some(PtyHostEvent::ListResult { seq, terminals: list_terminals(sh) })
         }
+        // 单向：客户端不登记 seq，不回执
+        PtyHostRequest::Write { id, data } => {
+            if let Ok(w) = sh.pty.lock().unwrap().get_writer(&id) {
+                use std::io::Write as _;
+                if let Ok(mut w) = w.lock() {
+                    let _ = w.write_all(data.as_bytes());
+                    let _ = w.flush();
+                }
+            }
+            None
+        }
+        PtyHostRequest::Resize { seq, id, cols, rows } => {
+            match sh.pty.lock().unwrap().get_master(&id) {
+                Ok(m) => {
+                    let r = m.lock().unwrap().resize(portable_pty::PtySize {
+                        rows, cols, pixel_width: 0, pixel_height: 0,
+                    });
+                    match r {
+                        Ok(()) => {
+                            sh.screen.lock().unwrap().resize(&id, rows, cols);
+                            Some(PtyHostEvent::Ok { seq })
+                        }
+                        Err(e) => Some(PtyHostEvent::Error { seq, message: e.to_string() }),
+                    }
+                }
+                Err(e) => Some(PtyHostEvent::Error { seq, message: e }),
+            }
+        }
+        PtyHostRequest::LockSize { seq, id, cols, rows } => {
+            sh.locks.lock().unwrap().insert(id.clone(), (cols, rows));
+            // 立刻把 PTY 也对齐到锁定尺寸
+            if let Ok(m) = sh.pty.lock().unwrap().get_master(&id) {
+                let _ = m.lock().unwrap().resize(portable_pty::PtySize {
+                    rows, cols, pixel_width: 0, pixel_height: 0,
+                });
+                sh.screen.lock().unwrap().resize(&id, rows, cols);
+            }
+            Some(PtyHostEvent::Ok { seq })
+        }
+        PtyHostRequest::Screen { seq, id } => {
+            // 手机尚未认领时没有锁定尺寸 —— 回退到解析器自己的尺寸，不报错
+            let (cols, rows) = match sh.locks.lock().unwrap().get(&id).copied() {
+                Some(l) => l,
+                None => match sh.screen.lock().unwrap().size_of(&id) {
+                    Some((r, c)) => (c, r),
+                    None => {
+                        return Some(PtyHostEvent::Error {
+                            seq,
+                            message: format!("no screen for PTY {id}"),
+                        })
+                    }
+                },
+            };
+            // 解析器尺寸与记录不符时才重建 —— 复刻 b3ebd5a 移出的语义
+            let needs_rebuild = sh.screen.lock().unwrap().size_of(&id) != Some((rows, cols));
+            if needs_rebuild {
+                if let Some(raw) = sh.buffers.lock().unwrap().get_bytes(&id) {
+                    sh.screen.lock().unwrap().rebuild(&id, rows, cols, &raw);
+                }
+            }
+            match sh.screen.lock().unwrap().snapshot_with_size(&id) {
+                Some(snap) => Some(to_screen_result(seq, snap)),
+                None => Some(PtyHostEvent::Error {
+                    seq,
+                    message: format!("no screen for PTY {id}"),
+                }),
+            }
+        }
         other => Some(PtyHostEvent::Error {
             seq: request_seq(&other),
             message: "not implemented yet".into(),
