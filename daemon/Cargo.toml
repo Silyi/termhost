@@ -13,11 +13,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "pty-host"
-path = "src/bin/pty_host.rs"
-
-[[bin]]
-name = "termhost-bridge"
-path = "src/bin/bridge.rs"
+path = "src/pty_host.rs"
 
 [[bin]]
 name = "termhostd-android"

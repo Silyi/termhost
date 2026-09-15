@@ -5,6 +5,7 @@
 
 pub mod error;
 pub mod screen;
+pub mod buffer;
 
 #[cfg(target_os = "windows")]
 pub mod pty_client;
