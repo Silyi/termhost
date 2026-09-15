@@ -40,6 +40,9 @@ src-tauri/gen/
 transcript_clean.txt
 .cargo/
 
+# Agent session artifacts — local working notes, not part of the project
+.superpowers/
+
 # Draft icons
 icons-draft/
 nul
