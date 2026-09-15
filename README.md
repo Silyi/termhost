@@ -2,7 +2,7 @@
 
 **Your Windows terminals, in your pocket.** A terminal workspace for your PC and a remote control for it on your phone — one app.
 
-termhost is a Windows terminal multiplexer (think tmux, but with a GUI) whose terminals live in a background daemon and are reachable from any device: work in split panes on your laptop, then pick up your phone and keep driving the very same terminals from the couch, the street, or another machine. No SSH app, no account, no cloud — your PC serves everything itself.
+termhost is a Windows terminal multiplexer (think tmux, but with a GUI) whose terminals live in background processes of their own — not in the window, not even in the daemon — and are reachable from any device: work in split panes on your laptop, then pick up your phone and keep driving the very same terminals from the couch, the street, or another machine. No SSH app, no account, no cloud — your PC serves everything itself.
 
 Built for the age of AI coding agents: the most common use case is **controlling Claude Code, Codex, or opencode running on your PC from your phone** — watching the agent work, answering its prompts, sending it a photo — while your laptop stays on the desk.
 
