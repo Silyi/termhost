@@ -61,6 +61,8 @@ Get-Process | ? { $_.ProcessName -match 'termhost|pty-host' } |
 
 ## 待办（本次未做）
 
-- daemon 加**文件日志**：控制台隐藏后 `tracing` 输出彻底无处可看
-- pty-host 死后 daemon 应**自愈**（检测到管道断开就退出，由 app 重新拉起），
-  而不是留在「每次 spawn 都失败」的状态
+- ~~daemon 加**文件日志**：控制台隐藏后 `tracing` 输出彻底无处可看~~
+  → **2026-09-16 已做**（`daemon/src/panic_log.rs`）
+- ~~pty-host 死后 daemon 应**自愈**~~ → **2026-09-16 已做**，但**不是**「退出让 app 拉起」：
+  那样会破坏手机远程访问（app 没开时没人拉它）。改为 daemon 就地重连。
+  见 [[pty-host-panics-and-recovery]]

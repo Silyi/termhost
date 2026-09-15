@@ -29,6 +29,7 @@
 - [xterm-scrollbar-strategy.md](gotchas/xterm-scrollbar-strategy.md) — 1px invisible scrollbar trick, focused-pane scrollbar, bg matching
 - [pty-host-console-window.md](gotchas/pty-host-console-window.md) — 关掉 pty-host 的控制台窗口会杀掉所有终端；spawn 必须带 CREATE_NO_WINDOW
 - [orphan-terminals-accumulate.md](gotchas/orphan-terminals-accumulate.md) — 「新建终端」只 spawn 不挂载 → 游离终端永久累积；id 含创建时间是判据
+- [pty-host-panics-and-recovery.md](gotchas/pty-host-panics-and-recovery.md) — pty-host panic 后 abort（os error 232）；panic 日志 + daemon 自动重连
 
 ## domain/
 
