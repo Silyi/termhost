@@ -20,7 +20,7 @@ const S16M = ({ children }: { children: ReactNode }) => (
 );
 
 const TABS: TabDef[] = [
-  { key: "files", label: "Files", desc: "File browser & preview", icon: <S16M><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></S16M>, render: () => (
+  { key: "files", label: "文件", desc: "文件浏览与预览", icon: <S16M><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></S16M>, render: () => (
     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
       <div style={{ width: "45%", minWidth: 260, borderRight: "1px solid rgba(255,255,255,0.06)", overflow: "auto" }}>
         <FilesContent />
@@ -30,8 +30,12 @@ const TABS: TabDef[] = [
       </div>
     </div>
   ) },
-  { key: "git", label: "Git", desc: "Git status & diff", icon: <S16M><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8 7l7.5 4M8 17l7.5-4"/></S16M>, render: () => <GitPanel embedded /> },
+  { key: "git", label: "Git", desc: "Git 状态与差异", icon: <S16M><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8 7l7.5 4M8 17l7.5-4"/></S16M>, render: () => <GitPanel embedded /> },
 ];
+
+// Pairing and Settings are rendered by renderTab(), not listed in TABS, so the
+// status bar needs their labels here instead of falling back to the raw key.
+const TAB_LABELS: Record<string, string> = { pairing: "配对", settings: "设置" };
 
 function renderTab(key: string): ReactNode {
   if (key === "pairing") return <PairingFull />;
@@ -110,19 +114,19 @@ export default function Dashboard() {
               </button>
             ))}
             <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "4px 8px" }} />
-            <button style={navBtn(activeTab === "settings")} onClick={() => setActiveTab("settings")} title="Settings">
+            <button style={navBtn(activeTab === "settings")} onClick={() => setActiveTab("settings")} title="设置">
               <S16M><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></S16M>
-              {showLabel && <span>Settings</span>}
+              {showLabel && <span>设置</span>}
             </button>
-            <button style={navBtn(activeTab === "pairing")} onClick={() => setActiveTab("pairing")} title="Pairing">
+            <button style={navBtn(activeTab === "pairing")} onClick={() => setActiveTab("pairing")} title="配对">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              {showLabel && <span>Pairing</span>}
+              {showLabel && <span>配对</span>}
             </button>
           </div>
-          <button onClick={showTerminals} title="Terminals"
+          <button onClick={showTerminals} title="终端"
             style={{ ...navBtn(false), borderTop: "1px solid rgba(255,255,255,0.06)", minHeight: 36, justifyContent: showLabel ? "flex-start" : "center", padding: showLabel ? "0 10px" : "0" }}>
             <S16M><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></S16M>
-            {showLabel && <span>Terminals</span>}
+            {showLabel && <span>终端</span>}
           </button>
         </div>
       )}
@@ -135,12 +139,12 @@ export default function Dashboard() {
             style={{ width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", flexShrink: 0 }}>
             {toggleIcon}
           </button>
-          <span style={{ fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>{TABS.find(t => t.key === activeTab)?.label || activeTab}</span>
+          <span style={{ fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>{TABS.find(t => t.key === activeTab)?.label || TAB_LABELS[activeTab] || activeTab}</span>
           {wsRunning && (
             <>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", flexShrink: 0 }} />
               <span style={{ opacity: 0.45, flexShrink: 0 }}>{wsIps[0]}:{wsPort}</span>
-              <span style={{ opacity: 0.3, flexShrink: 0 }}>{onlineCount}/{deviceCount} online</span>
+              <span style={{ opacity: 0.3, flexShrink: 0 }}>{onlineCount}/{deviceCount} 在线</span>
             </>
           )}
         </div>

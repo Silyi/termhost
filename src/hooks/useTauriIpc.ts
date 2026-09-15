@@ -133,7 +133,7 @@ export async function getPendingPairs(): Promise<{ deviceId: string; code: strin
   return invoke("get_pending_pairs");
 }
 
-export async function pairApprove(deviceId: string, label: string = "Phone"): Promise<void> {
+export async function pairApprove(deviceId: string, label: string = "手机"): Promise<void> {
   return invoke("pair_approve", { deviceId, label });
 }
 

@@ -63,7 +63,7 @@ export default function AllTerminals() {
     const ws = useWorkspaceStore.getState();
     const colorIdx = ws.workspaces.length % 8;
     ws.addWorkspace({
-      name: "Workspace",
+      name: "工作区",
       color: colorIdx,
       panes: [{ cwd: "", command: "" }],
     });
@@ -74,19 +74,19 @@ export default function AllTerminals() {
     <div className={s.page} style={{ justifyContent: "flex-start", padding: "24px 32px" }}>
       <div style={{ width: "100%", maxWidth: 800 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>All Terminals</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>所有终端</h2>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={handleNewTerminal} disabled={spawning}
               style={{ background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: 6, padding: "6px 14px", color: "#4ade80", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-              {spawning ? "..." : "+ Terminal"}
+              {spawning ? "..." : "+ 新建终端"}
             </button>
             <button onClick={handleNewWorkspace}
               style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, padding: "6px 14px", color: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-              + Workspace
+              + 新建工作区
             </button>
             <button onClick={showTerminals}
               style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, padding: "6px 14px", color: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-              Split View
+              拆分视图
             </button>
           </div>
         </div>
@@ -112,7 +112,7 @@ export default function AllTerminals() {
                 <div style={{ fontSize: 10, opacity: 0.25, fontFamily: "monospace" }}>{t.command || "powershell"}</div>
                 <button onClick={async (e) => { e.stopPropagation(); await killTerminal(t.id); refresh(); }}
                   style={{ background: "rgba(224,80,80,0.1)", border: "1px solid rgba(224,80,80,0.2)", borderRadius: 4, padding: "3px 10px", color: "#e05050", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
-                  Kill
+                  终止
                 </button>
               </div>
             ))}

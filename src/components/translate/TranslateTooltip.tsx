@@ -82,7 +82,7 @@ export default function TranslateTooltip() {
       const translated = await translateText(text);
       setResult({ text: translated, x, y });
     } catch (err) {
-      setResult({ text: `Error: ${err}`, x, y });
+      setResult({ text: `错误：${err}`, x, y });
     } finally {
       setLoading(false);
     }
@@ -182,7 +182,7 @@ export default function TranslateTooltip() {
             <button
               className={`${s.iconBtn} ${copied ? s.iconBtnOk : ""}`}
               onClick={handleCopy}
-              title="Copy"
+              title="复制"
               disabled={loading}
             >
               {copied ? (
@@ -191,7 +191,7 @@ export default function TranslateTooltip() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15V5a2 2 0 012-2h10" /></svg>
               )}
             </button>
-            <button className={s.iconBtn} onClick={close} title="Close">
+            <button className={s.iconBtn} onClick={close} title="关闭">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </div>

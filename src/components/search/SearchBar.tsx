@@ -59,13 +59,13 @@ export default function SearchBar({ onClose }: { onClose: () => void }) {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Search in terminal…"
+        placeholder="在终端中搜索…"
         spellCheck={false}
       />
-      <button className={s.btn} onClick={findPrev} title="Previous (Shift+Enter)">
+      <button className={s.btn} onClick={findPrev} title="上一个 (Shift+Enter)">
         ▲
       </button>
-      <button className={s.btn} onClick={findNext} title="Next (Enter)">
+      <button className={s.btn} onClick={findNext} title="下一个 (Enter)">
         ▼
       </button>
       <button
@@ -74,7 +74,7 @@ export default function SearchBar({ onClose }: { onClose: () => void }) {
           getSearchAddon()?.clearDecorations();
           onClose();
         }}
-        title="Close (Esc)"
+        title="关闭 (Esc)"
       >
         ✕
       </button>

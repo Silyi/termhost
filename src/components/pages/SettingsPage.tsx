@@ -58,9 +58,9 @@ export default function SettingsPage() {
   return (
     <div className={s.page}>
       <div className={s.editor}>
-        <h2>Settings</h2>
+        <h2>设置</h2>
 
-        <label className={s.fieldLabel}>Theme</label>
+        <label className={s.fieldLabel}>主题</label>
         <div className={s.themeCards}>
           {Object.entries(THEMES).map(([key, theme]) => (
             <div
@@ -82,9 +82,9 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        <label className={s.fieldLabel}>Font</label>
+        <label className={s.fieldLabel}>字体</label>
         <div className={s.settingRow}>
-          <label>Family</label>
+          <label>字体系列</label>
           <select
             value={termFontFamily}
             onChange={(e) => setTermFontFamily(e.target.value)}
@@ -100,7 +100,7 @@ export default function SettingsPage() {
           </select>
         </div>
         <div className={s.settingRow}>
-          <label>Size</label>
+          <label>字号</label>
           <input
             type="range"
             min={8}
@@ -111,22 +111,22 @@ export default function SettingsPage() {
           <span className={s.val}>{termFontSize}px</span>
         </div>
 
-        <label className={s.fieldLabel}>Cursor</label>
+        <label className={s.fieldLabel}>光标</label>
         <div className={s.settingRow}>
-          <label>Shape</label>
+          <label>形状</label>
           <select
             value={termCursorStyle}
             onChange={(e) => setTermCursorStyle(e.target.value as CursorStyle)}
           >
-            <option value="block">█ Block</option>
-            <option value="bar">▏ Bar</option>
-            <option value="underline">▁ Underline</option>
+            <option value="block">█ 块状</option>
+            <option value="bar">▏ 竖线</option>
+            <option value="underline">▁ 下划线</option>
           </select>
         </div>
 
-        <label className={s.fieldLabel}>Interface</label>
+        <label className={s.fieldLabel}>界面</label>
         <div className={s.settingRow}>
-          <label>UI Scale</label>
+          <label>界面缩放</label>
           <input
             type="range"
             min={80}
@@ -138,41 +138,41 @@ export default function SettingsPage() {
           <span className={s.val}>{uiScale}%</span>
         </div>
 
-        <label className={s.fieldLabel}>Layout</label>
+        <label className={s.fieldLabel}>布局</label>
         <div className={s.settingRow}>
-          <label>Pane Resize</label>
+          <label>窗格缩放</label>
           <button
             className={splitResizeEnabled ? s.btnAccent : s.btn}
             onClick={() => setSplitResizeEnabled(!splitResizeEnabled)}
           >
-            {splitResizeEnabled ? "Enabled" : "Disabled"}
+            {splitResizeEnabled ? "已启用" : "已禁用"}
           </button>
         </div>
 
-        <label className={s.fieldLabel}>Remote Access</label>
+        <label className={s.fieldLabel}>远程访问</label>
         <div className={s.settingRow}>
-          <label>Mobile</label>
+          <label>移动端</label>
           <button
             className={wsRunning ? s.btnAccent : s.btn}
             onClick={toggleWsServer}
           >
-            {wsRunning ? "Stop Server" : "Start Server"}
+            {wsRunning ? "停止服务器" : "启动服务器"}
           </button>
           <span
             className={s.val}
             style={{ minWidth: "auto", fontSize: 11, color: wsRunning ? "#2ecc71" : "var(--text-dim)" }}
           >
-            {wsRunning ? "Running" : "Stopped"}
+            {wsRunning ? "运行中" : "已停止"}
           </span>
         </div>
         {wsRunning && wsIps.length > 0 && (
           <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-dim)" }}>
-            Open this URL on your phone:
+            在手机上打开此链接：
             {wsIps.map((ip) => {
               const isTs = ip.startsWith("100.");
               return (
                 <div key={ip} style={{ marginTop: 4 }}>
-                  <span style={{ opacity: 0.7 }}>{isTs ? "🌐 Tailscale (anywhere)" : "🏠 Home (same Wi-Fi)"}</span>
+                  <span style={{ opacity: 0.7 }}>{isTs ? "🌐 Tailscale（任意位置）" : "🏠 家庭网络（同一 Wi-Fi）"}</span>
                   <div className={s.wsUrlBox}>{`http://${ip}:9090`}</div>
                 </div>
               );
@@ -182,7 +182,7 @@ export default function SettingsPage() {
 
         <div className={s.actions}>
           <button className={s.btn} onClick={showTerminals}>
-            Close
+            关闭
           </button>
         </div>
       </div>

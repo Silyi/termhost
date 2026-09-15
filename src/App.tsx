@@ -400,7 +400,7 @@ export default function App() {
     saveTree(current);
     const colorIdx = useWorkspaceStore.getState().workspaces.length % 8;
     useWorkspaceStore.getState().addWorkspace({
-      name: "Workspace",
+      name: "工作区",
       color: colorIdx,
       panes: [{ cwd: "", command: "" }],
     });

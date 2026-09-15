@@ -14,7 +14,7 @@ interface Props {
 const PANE_COUNTS = [1, 2, 3, 4, 6, 8];
 
 const MODES = [
-  { key: "shell", label: "Terminal", cmd: "" },
+  { key: "shell", label: "终端", cmd: "" },
   { key: "claude", label: "Claude Code", cmd: "claude --dangerously-skip-permissions" },
   { key: "codex", label: "Codex", cmd: "codex --yolo" },
 ] as const;
@@ -58,7 +58,7 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
   }, [projectFolder, homeDir, name]);
 
   const handleSaveTemplate = useCallback(() => {
-    const tplName = name.trim() || `Template (${panes.length} panes)`;
+    const tplName = name.trim() || `模板（${panes.length} 个窗格）`;
     saveCustomTemplate({ name: tplName, panes });
     setCustomTemplates(loadCustomTemplates());
     setTemplateSaved(true);
@@ -106,7 +106,7 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
   );
 
   const handleSave = useCallback(() => {
-    const wsName = name.trim() || "Workspace";
+    const wsName = name.trim() || "工作区";
 
     if (isEdit && editIdx !== null) {
       updateWorkspace(editIdx, { name: wsName });
@@ -137,15 +137,15 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
     <div className={s.page}>
       <div className={s.editor}>
         <div className={s.editorTitle}>
-          <h2>{isEdit ? "Edit" : "New"} Workspace</h2>
+          <h2>{isEdit ? "编辑" : "新建"}工作区</h2>
           <span className={s.editorSubtitle}>
-            {isEdit ? "Rename your workspace" : "Configure your terminal layout"}
+            {isEdit ? "重命名你的工作区" : "配置终端布局"}
           </span>
         </div>
 
         {!isEdit && (
           <section className={s.section}>
-            <label className={s.fieldLabel}>Templates</label>
+            <label className={s.fieldLabel}>模板</label>
             <div className={s.modePicker} style={{ flexWrap: "wrap" }}>
               {BUILTIN_TEMPLATES.map((t) => (
                 <button key={t.name} className={s.modeBtn} onClick={() => applyTemplate(t)} title={t.panes.map((p) => p.command || "shell").join(" · ")}>
@@ -160,7 +160,7 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
                   <button
                     className={s.modeBtn}
                     style={{ padding: "0 6px", marginLeft: -4 }}
-                    title="Delete template"
+                    title="删除模板"
                     onClick={() => { deleteCustomTemplate(t.name); setCustomTemplates(loadCustomTemplates()); }}
                   >
                     ✕
@@ -173,7 +173,7 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
 
         {!isEdit && (
           <section className={s.section}>
-            <label className={s.fieldLabel}>Type</label>
+            <label className={s.fieldLabel}>类型</label>
             <div className={s.modePicker}>
               {MODES.map((m) => (
                 <button
@@ -189,12 +189,12 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
         )}
 
         <section className={s.section}>
-          <label className={s.fieldLabel}>Name</label>
+          <label className={s.fieldLabel}>名称</label>
           <input
             className={s.input}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="My Workspace"
+            placeholder="我的工作区"
             autoFocus
           />
         </section>
@@ -204,28 +204,28 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
             <section className={s.section}>
               <label className={s.fieldLabel}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-                Project Folder
+                项目文件夹
               </label>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
                   className={s.input}
                   value={projectFolder}
                   onChange={(e) => setProjectFolder(e.target.value)}
-                  placeholder="e.g. C:\Users\me\projects\myapp"
+                  placeholder="例如 C:\Users\me\projects\myapp"
                   style={{ fontFamily: "monospace", fontSize: 12 }}
                 />
                 <button className={s.btn} onClick={() => applyProjectFolder(projectFolder)} style={{ whiteSpace: "nowrap" }}>
-                  Apply to all
+                  应用到全部
                 </button>
               </div>
               <span style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, display: "block" }}>
-                Sets this folder as working directory for all panes
+                将此文件夹设为所有窗格的工作目录
               </span>
             </section>
 
             <section className={s.section}>
               <div className={s.panesHeader}>
-                <label className={s.fieldLabel} style={{ margin: 0 }}>Panes</label>
+                <label className={s.fieldLabel} style={{ margin: 0 }}>窗格</label>
                 <div className={s.paneCountPicker}>
                   {PANE_COUNTS.map((n) => (
                     <button
@@ -248,17 +248,17 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
                         className={s.paneCwd}
                         value={p.cwd}
                         onChange={(e) => updatePane(i, "cwd", e.target.value)}
-                        placeholder="working directory"
+                        placeholder="工作目录"
                       />
                       <input
                         className={s.paneCmd}
                         value={p.command}
                         onChange={(e) => updatePane(i, "command", e.target.value)}
-                        placeholder="command (optional)"
+                        placeholder="命令（可选）"
                       />
                     </div>
                     {panes.length > 1 && (
-                      <button className={s.removePaneBtn} onClick={() => removePaneRow(i)} title="Remove">
+                      <button className={s.removePaneBtn} onClick={() => removePaneRow(i)} title="移除">
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
                       </button>
                     )}
@@ -271,13 +271,13 @@ export default function WorkspaceEditor({ editIdx, onSave }: Props) {
 
         <div className={s.actions}>
           {!isEdit && (
-            <button className={s.btn} onClick={handleSaveTemplate} title="Save current pane setup as a reusable template">
-              {templateSaved ? "Saved ✓" : "Save as template"}
+            <button className={s.btn} onClick={handleSaveTemplate} title="将当前窗格配置保存为可复用模板">
+              {templateSaved ? "已保存 ✓" : "保存为模板"}
             </button>
           )}
-          {isEdit && <button className={s.btn} onClick={handleCancel}>Cancel</button>}
+          {isEdit && <button className={s.btn} onClick={handleCancel}>取消</button>}
           <button className={s.btnAccent} onClick={handleSave}>
-            {isEdit ? "Save Changes" : "Create Workspace"}
+            {isEdit ? "保存更改" : "创建工作区"}
           </button>
         </div>
       </div>

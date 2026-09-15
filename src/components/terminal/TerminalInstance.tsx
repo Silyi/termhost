@@ -118,7 +118,7 @@ export default function TerminalInstance({ id, cwd, command, onFocus }: Props) {
       term.selectLines(copyCursor, copyCursor);
       if (!copyBadge) {
         copyBadge = document.createElement("div");
-        copyBadge.textContent = "COPY · Space=select · Enter=copy · q=exit";
+        copyBadge.textContent = "复制模式 · Space=选择 · Enter=复制 · q=退出";
         copyBadge.style.cssText =
           "position:absolute;top:4px;right:12px;z-index:10;padding:2px 8px;font-size:10px;" +
           "border-radius:4px;background:#1a1a1a;color:#e5a50a;border:1px solid #333;pointer-events:none;";

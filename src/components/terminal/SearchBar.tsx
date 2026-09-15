@@ -119,14 +119,14 @@ export default function SearchBar({ terminalId, onClose }: Props) {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Search…"
+        placeholder="搜索…"
         spellCheck={false}
       />
       {matchLabel && <span className={s.searchCount}>{matchLabel}</span>}
       <button
         className={s.searchBtn}
         onClick={findPrev}
-        title="Previous (Shift+Enter)"
+        title="上一个 (Shift+Enter)"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="18 15 12 9 6 15" />
@@ -135,7 +135,7 @@ export default function SearchBar({ terminalId, onClose }: Props) {
       <button
         className={s.searchBtn}
         onClick={findNext}
-        title="Next (Enter)"
+        title="下一个 (Enter)"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9" />
@@ -144,7 +144,7 @@ export default function SearchBar({ terminalId, onClose }: Props) {
       <button
         className={s.searchBtn}
         onClick={handleClose}
-        title="Close (Escape)"
+        title="关闭 (Escape)"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" />

@@ -22,7 +22,7 @@ export default function QRLogin({ ips, port }: Props) {
 
   return (
     <div style={{ textAlign: "center", padding: "8px 0" }}>
-      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>Scan to connect from phone</div>
+      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>用手机扫码连接</div>
       <canvas ref={canvasRef} style={{ borderRadius: 6 }} />
     </div>
   );

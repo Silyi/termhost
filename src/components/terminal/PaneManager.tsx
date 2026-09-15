@@ -178,8 +178,8 @@ export default function PaneManager({ onClose, onSwap }: Props) {
     <div className={s.overlay} ref={overlayRef} onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
       <div className={s.container}>
         <div className={s.header}>
-          <span className={s.title}>Terminals</span>
-          <span className={s.hint}>drag to swap</span>
+          <span className={s.title}>终端</span>
+          <span className={s.hint}>拖拽交换</span>
           <button className={s.closeBtn} onClick={onClose}>
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M3 3l6 6M9 3l-6 6" />

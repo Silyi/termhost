@@ -119,7 +119,7 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
         {/* Add terminal */}
         {!isZoomed && (
           <div style={{ position: "relative" }}>
-            <button className={s.action} title="Add terminal" onClick={(e) => { e.stopPropagation(); setShowAdd(!showAdd); }} onMouseDown={(e) => e.stopPropagation()}>
+            <button className={s.action} title="新建终端" onClick={(e) => { e.stopPropagation(); setShowAdd(!showAdd); }} onMouseDown={(e) => e.stopPropagation()}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                 <path d="M8 3v10M3 8h10" />
               </svg>
@@ -128,8 +128,8 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
               <Dropdown
                 onClose={() => setShowAdd(false)}
                 items={[
-                  { label: "Split right", icon: ICON_TWO_COLS, action: onSplitH },
-                  { label: "Split down", icon: ICON_TWO_ROWS, action: onSplitV },
+                  { label: "向右拆分", icon: ICON_TWO_COLS, action: onSplitH },
+                  { label: "向下拆分", icon: ICON_TWO_ROWS, action: onSplitV },
                 ]}
               />
             )}
@@ -140,7 +140,7 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
         {!isSinglePane && !isZoomed && (
           <button
             className={`${s.action} ${rearrangeMode ? s.actionActive : ""}`}
-            title="Rearrange (Ctrl+Shift+R)"
+            title="重新排列 (Ctrl+Shift+R)"
             {...btn(toggleRearrange)}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -153,7 +153,7 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
 
         {/* Expand / Collapse */}
         {!isSinglePane && (
-          <button className={s.action} title={isZoomed ? "Collapse (Ctrl+Shift+M)" : "Expand (Ctrl+Shift+M)"} {...btn(onZoom)}>
+          <button className={s.action} title={isZoomed ? "折叠 (Ctrl+Shift+M)" : "展开 (Ctrl+Shift+M)"} {...btn(onZoom)}>
             {isZoomed ? (
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="15 6 10 6 10 1" />
@@ -173,7 +173,7 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
         )}
 
         {/* Export session log */}
-        <button className={s.action} title="Export session log" {...btn(() => { exportLog().catch(() => {}); })}>
+        <button className={s.action} title="导出会话日志" {...btn(() => { exportLog().catch(() => {}); })}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 2v8M5 7l3 3 3-3" />
             <path d="M2 12v2h12v-2" />
@@ -181,7 +181,7 @@ export default function PaneHeader({ id, cwd, isZoomed, isSinglePane, leafCount,
         </button>
 
         {/* Close */}
-        <button className={`${s.action} ${s.actionClose}`} title="Close (Ctrl+W)" {...btn(onClose)}>
+        <button className={`${s.action} ${s.actionClose}`} title="关闭 (Ctrl+W)" {...btn(onClose)}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M3 3l6 6M9 3l-6 6" />
           </svg>

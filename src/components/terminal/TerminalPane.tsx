@@ -130,7 +130,7 @@ export default function TerminalPane({ id, cwd, command, isSinglePane, leafCount
                 dropZone === "top" ? { inset: "6px 6px auto 6px", height: "calc(50% - 9px)" } :
                 { inset: "auto 6px 6px 6px", height: "calc(50% - 9px)" }
               }>
-                <span className={s.splitPreviewLabel}>drop here</span>
+                <span className={s.splitPreviewLabel}>放这里</span>
               </div>
               <div className={s.splitPreview} style={{
                 ...(dropZone === "left" ? { inset: "6px 6px 6px auto", width: "calc(50% - 9px)" } :
@@ -148,12 +148,12 @@ export default function TerminalPane({ id, cwd, command, isSinglePane, leafCount
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(100,200,255,0.8)" strokeWidth="2" strokeLinecap="round">
                 <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
               </svg>
-              <span className={s.rearrangeHint} style={{ color: "rgba(100,200,255,0.7)" }}>swap</span>
+              <span className={s.rearrangeHint} style={{ color: "rgba(100,200,255,0.7)" }}>交换</span>
             </>
           ) : (
             <>
               <span className={s.rearrangeIndex}>{paneIndex}</span>
-              <span className={s.rearrangeHint}>drag to rearrange</span>
+              <span className={s.rearrangeHint}>拖拽重新排列</span>
             </>
           )}
         </div>

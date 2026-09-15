@@ -13,12 +13,12 @@ import type { DeviceInfo } from "../../hooks/useTauriIpc";
 import s from "./Pages.module.css";
 
 const SLEEP_TIMEOUTS: { label: string; never: boolean; minutes: number }[] = [
-  { label: "Never off", never: true, minutes: 0 },
-  { label: "Off after 30 min idle", never: false, minutes: 30 },
-  { label: "Off after 1 hour idle", never: false, minutes: 60 },
-  { label: "Off after 2 hours idle", never: false, minutes: 120 },
-  { label: "Off after 4 hours idle", never: false, minutes: 240 },
-  { label: "Off after 24 hours idle", never: false, minutes: 1440 },
+  { label: "永不关闭", never: true, minutes: 0 },
+  { label: "闲置 30 分钟后关闭", never: false, minutes: 30 },
+  { label: "闲置 1 小时后关闭", never: false, minutes: 60 },
+  { label: "闲置 2 小时后关闭", never: false, minutes: 120 },
+  { label: "闲置 4 小时后关闭", never: false, minutes: 240 },
+  { label: "闲置 24 小时后关闭", never: false, minutes: 1440 },
 ];
 
 function DeviceRow({ device, onUpdate }: { device: DeviceInfo; onUpdate: () => void }) {
@@ -47,12 +47,12 @@ function DeviceRow({ device, onUpdate }: { device: DeviceInfo; onUpdate: () => v
     if (!ts) return null;
     const diff = Date.now() - ts;
     const min = Math.floor(diff / 60000);
-    if (min < 1) return "just now";
-    if (min < 60) return `${min}m ago`;
+    if (min < 1) return "刚刚";
+    if (min < 60) return `${min} 分钟前`;
     const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h ago`;
+    if (hr < 24) return `${hr} 小时前`;
     const days = Math.floor(hr / 24);
-    return `${days}d ago`;
+    return `${days} 天前`;
   };
 
   return (
@@ -64,31 +64,31 @@ function DeviceRow({ device, onUpdate }: { device: DeviceInfo; onUpdate: () => v
             onBlur={save} onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setLabel(device.label); setEditing(false); } }}
             autoFocus style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4, padding: "2px 6px", fontSize: 13, color: "#fff", outline: "none", width: "100%", boxSizing: "border-box" }} />
         ) : (
-          <div style={{ opacity: 0.9, cursor: "pointer", fontWeight: 500, fontSize: 13 }} onClick={() => { setLabel(device.label); setEditing(true); }} title="Click to rename">
+          <div style={{ opacity: 0.9, cursor: "pointer", fontWeight: 500, fontSize: 13 }} onClick={() => { setLabel(device.label); setEditing(true); }} title="点击重命名">
             {device.label}
           </div>
         )}
         <div style={{ display: "flex", gap: 10, opacity: 0.4, fontSize: 11, marginTop: 2, flexWrap: "wrap" }}>
           {device.deviceType && <span>{device.deviceType}</span>}
-          {device.online ? <span style={{ color: "#4ade80", opacity: 1 }}>Online</span> : formatTime(device.lastSeen) && <span>Offline · {formatTime(device.lastSeen)}</span>}
+          {device.online ? <span style={{ color: "#4ade80", opacity: 1 }}>在线</span> : formatTime(device.lastSeen) && <span>离线 · 最后在线 {formatTime(device.lastSeen)}</span>}
           <span>{new Date(device.approvedAt).toLocaleDateString()}</span>
         </div>
         {editingNote ? (
           <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
             <input value={note} onChange={(e) => setNote(e.target.value)}
               onBlur={saveNote} onKeyDown={(e) => { if (e.key === "Enter") saveNote(); if (e.key === "Escape") { setNote(device.note); setEditingNote(false); } }}
-              autoFocus placeholder="Add a note…"
+              autoFocus placeholder="添加备注…"
               style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, padding: "2px 6px", fontSize: 11, color: "#ccc", outline: "none" }} />
           </div>
         ) : note ? (
           <div style={{ opacity: 0.5, fontSize: 11, marginTop: 3, cursor: "pointer" }} onClick={() => { setNote(note); setEditingNote(true); }}>{note}</div>
         ) : (
-          <div style={{ opacity: 0.25, fontSize: 11, marginTop: 3, cursor: "pointer", fontStyle: "italic" }} onClick={() => { setNote(""); setEditingNote(true); }}>Add note…</div>
+          <div style={{ opacity: 0.25, fontSize: 11, marginTop: 3, cursor: "pointer", fontStyle: "italic" }} onClick={() => { setNote(""); setEditingNote(true); }}>添加备注…</div>
         )}
       </div>
       <button onClick={async () => { await revokeDevice(device.token); onUpdate(); }}
         style={{ background: "none", border: "none", color: "#e05050", cursor: "pointer", fontSize: 12, opacity: 0.6, padding: "2px 8px", flexShrink: 0 }}>
-        Revoke
+        撤销
       </button>
     </div>
   );
@@ -168,17 +168,17 @@ export default function PairingPage() {
     <div className={s.page} style={{ justifyContent: "flex-start", padding: "24px 32px" }}>
       <div style={{ width: "100%", maxWidth: 800 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Pairing & Remote Access</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>配对与远程访问</h2>
           <button onClick={showTerminals}
             style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, padding: "6px 14px", color: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-            Back to Terminals
+            返回终端
           </button>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
           {/* QR + URL */}
           <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 16 }}>
-            <div style={sectionTitle}>Scan QR or open link</div>
+            <div style={sectionTitle}>扫描二维码或打开链接</div>
             {wsIps.length > 0 && wsPort > 0 ? (
               <>
                 <canvas ref={canvasRef} style={{ borderRadius: 8, display: "block" }} />
@@ -187,27 +187,27 @@ export default function PairingPage() {
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: 12, opacity: 0.4 }}>Starting server…</div>
+              <div style={{ fontSize: 12, opacity: 0.4 }}>正在启动服务器…</div>
             )}
           </div>
 
           {/* One-Time Code */}
           <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 16 }}>
-            <div style={sectionTitle}>One-Time Code</div>
+            <div style={sectionTitle}>一次性验证码</div>
             {pendingPairs.length > 0 ? pendingPairs.map((p) => (
               <div key={p.deviceId} style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "monospace", letterSpacing: 6, marginBottom: 8 }}>{p.code}</div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <input id={`label-${p.deviceId}`} defaultValue="Phone" placeholder="Device name"
+                  <input id={`label-${p.deviceId}`} defaultValue="手机" placeholder="设备名称"
                     style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, padding: "4px 8px", fontSize: 12, color: "#fff", outline: "none" }} />
-                  <button onClick={() => { const inp = document.getElementById(`label-${p.deviceId}`) as HTMLInputElement; pairApprove(p.deviceId, inp?.value || "Phone").then(poll); }}
-                    style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4, padding: "4px 12px", color: "#fff", cursor: "pointer", fontSize: 12 }}>Approve</button>
+                  <button onClick={() => { const inp = document.getElementById(`label-${p.deviceId}`) as HTMLInputElement; pairApprove(p.deviceId, inp?.value || "手机").then(poll); }}
+                    style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4, padding: "4px 12px", color: "#fff", cursor: "pointer", fontSize: 12 }}>允许</button>
                   <button onClick={() => pairReject(p.deviceId).then(poll)}
-                    style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, padding: "4px 12px", color: "#e05050", cursor: "pointer", fontSize: 12 }}>Reject</button>
+                    style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, padding: "4px 12px", color: "#e05050", cursor: "pointer", fontSize: 12 }}>拒绝</button>
                 </div>
               </div>
             )) : (
-              <div style={{ fontSize: 12, opacity: 0.4 }}>No pending requests</div>
+              <div style={{ fontSize: 12, opacity: 0.4 }}>没有待处理的请求</div>
             )}
           </div>
         </div>
@@ -216,26 +216,26 @@ export default function PairingPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
           {/* Auto-approve */}
           <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 16 }}>
-            <div style={sectionTitle}>Auto-approve</div>
+            <div style={sectionTitle}>自动允许</div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 12, opacity: 0.6 }}>Auto-approve new devices</span>
+              <span style={{ fontSize: 12, opacity: 0.6 }}>自动允许新设备</span>
               <div onClick={toggleAutoApprove} style={{ width: 36, height: 20, borderRadius: 10, cursor: "pointer", position: "relative", background: autoApprove ? "#4ade80" : "rgba(255,255,255,0.15)", transition: "background 0.2s" }}>
                 <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: autoApprove ? 18 : 2, transition: "left 0.2s" }} />
               </div>
             </div>
             <div style={{ fontSize: 11, opacity: 0.35, marginTop: 4 }}>
-              {autoApprove ? "New devices connect without manual approval" : "Require manual approval for new devices"}
+              {autoApprove ? "新设备无需手动允许即可连接" : "新设备需要手动允许"}
             </div>
             {wsRunning && (
               <button onClick={handleStopTunnel} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px", marginTop: 12, background: "rgba(224,80,80,0.1)", border: "1px solid rgba(224,80,80,0.25)", borderRadius: 6, color: "#e05050", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-                Stop Tunnel
+                停止隧道
               </button>
             )}
           </div>
 
           {/* Prevent Sleep */}
           <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 16 }}>
-            <div style={sectionTitle}>Prevent sleep</div>
+            <div style={sectionTitle}>防止休眠</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {SLEEP_TIMEOUTS.map((opt) => {
                 const active = opt.never ? sleepNever : (!sleepNever && sleepTimeout === opt.minutes);
@@ -253,12 +253,12 @@ export default function PairingPage() {
 
         {/* Terminal selection */}
         <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 16, marginBottom: 24 }}>
-          <div style={{ ...sectionTitle, marginBottom: 6 }}>Shared Terminals</div>
+          <div style={{ ...sectionTitle, marginBottom: 6 }}>共享终端</div>
           <div style={{ fontSize: 11, opacity: 0.35, marginBottom: 12 }}>
-            Select which terminals are visible to remote (mobile) clients
+            选择哪些终端对远程（移动端）客户端可见
           </div>
           {terminals.length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.4 }}>No terminals running</div>
+            <div style={{ fontSize: 12, opacity: 0.4 }}>没有正在运行的终端</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {terminals.map((t) => (
@@ -280,9 +280,9 @@ export default function PairingPage() {
 
         {/* Clients */}
         <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 16 }}>
-          <div style={{ ...sectionTitle, marginBottom: 6 }}>Clients ({devices.length})</div>
+          <div style={{ ...sectionTitle, marginBottom: 6 }}>客户端（{devices.length}）</div>
           {devices.length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.4 }}>No devices paired yet</div>
+            <div style={{ fontSize: 12, opacity: 0.4 }}>尚未配对任何设备</div>
           ) : (
             <div>{devices.map((d) => <DeviceRow key={d.token} device={d} onUpdate={poll} />)}</div>
           )}
