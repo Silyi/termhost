@@ -9,10 +9,17 @@ use std::ptr;
 use termhostd::pty_ipc::PTY_HOST_MUTEX_NAME;
 use termhostd::pty_ipc::PtyHostEvent;
 
-/// 输出画到的最大位置是否超出了手机锁定的尺寸。
-/// `locked` 是 `(cols, rows)` —— 与协议一致。
-fn exceeds_lock(locked: (u16, u16), max_row: usize, max_col: usize) -> bool {
+/// 输出画到的范围是否超出了手机锁定的尺寸。
+///
+/// `locked` 是 `(cols, rows)` —— 与协议一致（`pty_ipc.rs`）。
+/// `scan` 是 `ScreenManager::scan_max_pos` 的原生返回值 `(max_row, max_col)` ——
+/// 原样透传，调用点因此没有任何转换可写错。
+///
+/// 两者都是**1 基的占用计数**（不是 0 基下标）：等于锁定值即恰好放得下。
+fn exceeds_lock(locked: (u16, u16), scan: (usize, usize)) -> bool {
     let (cols, rows) = locked;
+    let (max_row, max_col) = scan;
+
     max_col > cols as usize || max_row > rows as usize
 }
 
@@ -73,18 +80,18 @@ mod tests {
 
     #[test]
     fn exceeds_lock_is_false_when_output_fits() {
-        // locked = (cols=80, rows=24)
-        assert!(!exceeds_lock((80, 24), 24, 80));
+        // locked = (cols=80, rows=24)；scan = scan_max_pos 的 (max_row, max_col)
+        assert!(!exceeds_lock((80, 24), (24, 80)));
     }
 
     #[test]
     fn exceeds_lock_is_true_when_wider_than_lock() {
-        assert!(exceeds_lock((80, 24), 24, 81));
+        assert!(exceeds_lock((80, 24), (24, 81)));
     }
 
     #[test]
     fn exceeds_lock_is_true_when_taller_than_lock() {
-        assert!(exceeds_lock((80, 24), 25, 80));
+        assert!(exceeds_lock((80, 24), (25, 80)));
     }
 
     /// 协议要 (cols, rows)，vt100 给 (rows, cols)。这个测试就是防它搞反。
