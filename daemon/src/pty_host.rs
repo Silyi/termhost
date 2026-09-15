@@ -8,16 +8,20 @@ use std::collections::HashMap;
 use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use termhostd::buffer::BufferManager;
+use termhostd::pty_ipc::read_frame;
+use termhostd::pty_ipc::write_frame;
 use termhostd::pty_ipc::PTY_HOST_MUTEX_NAME;
+use termhostd::pty_ipc::PTY_HOST_PIPE_NAME;
 use termhostd::pty_ipc::PtyHostEvent;
 use termhostd::pty_ipc::PtyHostRequest;
 use termhostd::pty_ipc::PtyHostTerminalInfo;
 use termhostd::pty_manager::create_pty;
 use termhostd::pty_manager::PtyManager;
 use termhostd::screen::ScreenManager;
+use tokio::net::windows::named_pipe::{PipeMode, ServerOptions};
 use tokio::sync::mpsc::UnboundedSender;
 
 /// 输出画到的范围是否超出了手机锁定的尺寸。
@@ -77,11 +81,14 @@ fn main() {
         // 已有实例在跑 —— 静默退出，客户端会连上那个实例
         return;
     }
-    println!("pty-host up");
-    // 骨架阶段：保持存活以持有互斥体（T5 会用 tokio runtime 替换这里的 main）
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(3600));
-    }
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let (sh, rx) = Shared::new();
+    rt.block_on(async move {
+        if let Err(e) = serve(sh, rx).await {
+            eprintln!("pty-host fatal: {e}");
+            std::process::exit(1);
+        }
+    });
 }
 
 /// 客户端连接的写端。承载**已序列化的整帧**（4 字节 LE 长度 + JSON），
@@ -355,6 +362,133 @@ async fn handle_request(sh: &Arc<Shared>, req: PtyHostRequest) -> Option<PtyHost
                 }),
             }
         }
+    }
+}
+
+/// 把事件序列化成**整帧字节**，供向多个连接零拷贝分发。
+async fn encode<T: serde::Serialize>(msg: &T) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    // tokio 为 Vec<u8> 实现了 AsyncWrite，可直接复用 write_frame
+    write_frame(&mut buf, msg).await.ok()?;
+    Some(buf)
+}
+
+fn broadcast(sh: &Shared, frame: Vec<u8>) {
+    let mut clients = sh.clients.lock().unwrap();
+    // 发送失败的连接（对端已断开）就地剔除
+    clients.retain(|tx| tx.send(frame.clone()).is_ok());
+}
+
+/// size-lock 掰回尺寸的限流窗口。外部（Windows Terminal 标签）可能在每次
+/// 输出后都改一次尺寸，不设限流就会拿 resize 把 PTY 打满。
+const REVERT_THROTTLE: Duration = Duration::from_millis(500);
+
+async fn dispatch_loop(sh: Arc<Shared>, mut rx: tokio::sync::mpsc::UnboundedReceiver<Out>) {
+    while let Some(ev) = rx.recv().await {
+        match ev {
+            Out::Data(id, data) => {
+                let bytes = data.as_bytes();
+                sh.buffers.lock().unwrap().append_by_id(&id, bytes);
+                sh.screen.lock().unwrap().feed_by_id(&id, bytes);
+
+                // size-lock：外部（Windows Terminal 标签）偷偷改尺寸就掰回去
+                let locked = sh.locks.lock().unwrap().get(&id).copied();
+                if let Some(locked) = locked {
+                    // scan_max_pos 的返回值原样透传 —— 调用点不翻转任何东西
+                    if exceeds_lock(locked, ScreenManager::scan_max_pos(bytes)) {
+                        let due = sh
+                            .last_revert
+                            .lock()
+                            .unwrap()
+                            .get(&id)
+                            .map_or(true, |t| t.elapsed() >= REVERT_THROTTLE);
+                        if due {
+                            if let Ok(m) = sh.pty.lock().unwrap().get_master(&id) {
+                                let (cols, rows) = locked;
+                                let _ = m.lock().unwrap().resize(portable_pty::PtySize {
+                                    rows, cols, pixel_width: 0, pixel_height: 0,
+                                });
+                            }
+                            sh.last_revert.lock().unwrap().insert(id.clone(), Instant::now());
+                        }
+                    }
+                }
+
+                if let Some(frame) = encode(&PtyHostEvent::Output { id, data }).await {
+                    broadcast(&sh, frame);
+                }
+            }
+            Out::Exit(id, generation) => {
+                // 代际校验与拆除在 kill_if_current 内原子完成 —— 陈旧退出不能杀掉
+                // 同 id 的新实例。返回 false 说明这个 id 已经换了一代，什么都不做。
+                if kill_if_current(&sh, &id, generation) {
+                    if let Some(frame) = encode(&PtyHostEvent::Exited { id }).await {
+                        broadcast(&sh, frame);
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn serve_client(pipe: tokio::net::windows::named_pipe::NamedPipeServer, sh: Arc<Shared>) {
+    let (mut reader, mut writer) = tokio::io::split(pipe);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    sh.clients.lock().unwrap().push(tx.clone());
+
+    // 写循环：唯一往这条管道写东西的地方
+    let write_task = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        while let Some(frame) = rx.recv().await {
+            if writer.write_all(&frame).await.is_err() {
+                break;
+            }
+            let _ = writer.flush().await;
+        }
+    });
+
+    // 读循环
+    loop {
+        let frame = match read_frame(&mut reader).await {
+            Ok(Some(f)) => f,
+            _ => break, // 对端断开
+        };
+        let Ok(req) = serde_json::from_slice::<PtyHostRequest>(&frame) else {
+            continue; // 坏帧跳过，与客户端 Err(_) => continue 对齐
+        };
+        if let Some(resp) = handle_request(&sh, req).await {
+            if let Some(f) = encode(&resp).await {
+                if tx.send(f).is_err() {
+                    break;
+                }
+            }
+        }
+    }
+
+    // 断开：摘掉自己，PTY 不受影响
+    sh.clients.lock().unwrap().retain(|t| !t.same_channel(&tx));
+    write_task.abort();
+}
+
+async fn serve(sh: Arc<Shared>, rx: tokio::sync::mpsc::UnboundedReceiver<Out>) -> std::io::Result<()> {
+    tokio::spawn(dispatch_loop(sh.clone(), rx));
+
+    // 关键：**先建好下一个实例，再把当前这个交给处理任务**。
+    // 若在两次 create 之间留出空档，daemon 会收到 ERROR_FILE_NOT_FOUND，
+    // 进而误以为 pty-host 没在跑、再 spawn 一个（互斥体会挡住它，但那是
+    // 无谓的竞争）。提前建实例可以彻底消除这个空档。
+    let mut server = ServerOptions::new()
+        .pipe_mode(PipeMode::Byte)
+        .first_pipe_instance(true)
+        .create(PTY_HOST_PIPE_NAME)?;
+
+    loop {
+        server.connect().await?;
+        let connected = server;
+        server = ServerOptions::new()
+            .pipe_mode(PipeMode::Byte)
+            .create(PTY_HOST_PIPE_NAME)?;
+        tokio::spawn(serve_client(connected, sh.clone()));
     }
 }
 
