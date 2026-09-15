@@ -14,8 +14,17 @@
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <title>termhost</title>
   <!-- Telegram Mini App SDK — defines window.Telegram.WebApp when the page
-       runs inside Telegram; harmless (undefined) in a regular browser. -->
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+       runs inside Telegram. Loaded ONLY inside Telegram: a synchronous load of
+       telegram.org hangs the whole page on networks where that host is blocked
+       (the browser waits for the request to time out, so the load never finishes). -->
+  <script>
+    if (/Telegram/i.test(navigator.userAgent)) {
+      var s = document.createElement('script');
+      s.src = 'https://telegram.org/js/telegram-web-app.js';
+      s.async = true;
+      document.head.appendChild(s);
+    }
+  </script>
 </head>
 <body>
   <div id="root"></div>
