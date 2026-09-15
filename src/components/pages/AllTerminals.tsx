@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { usePanelStore } from "../../store/panelStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { listTerminals, killTerminal, spawnTerminal } from "../../hooks/useTauriIpc";
+import { openExistingTerminal } from "../../store/openTerminal";
 import s from "./Pages.module.css";
 
 interface TermInfo {
@@ -92,20 +93,24 @@ export default function AllTerminals() {
 
         {terms.length === 0 ? (
           <div style={{ fontSize: 13, opacity: 0.4, textAlign: "center", marginTop: 60 }}>
-            No terminals running. Create one with <strong>+ Terminal</strong> or from your phone.
+            没有正在运行的终端。用 <strong>+ 新建终端</strong> 建一个，或在手机上建。
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {terms.map((t) => (
               <div key={t.id}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                onClick={() => openExistingTerminal(t.id)}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+                title="点击在布局中打开这个终端"
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</div>
                   <div style={{ fontSize: 11, opacity: 0.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{t.cwd}</div>
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.25, fontFamily: "monospace" }}>{t.command || "powershell"}</div>
-                <button onClick={async () => { await killTerminal(t.id); refresh(); }}
+                <button onClick={async (e) => { e.stopPropagation(); await killTerminal(t.id); refresh(); }}
                   style={{ background: "rgba(224,80,80,0.1)", border: "1px solid rgba(224,80,80,0.2)", borderRadius: 4, padding: "3px 10px", color: "#e05050", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
                   Kill
                 </button>
