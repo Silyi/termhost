@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::ptr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -98,6 +99,19 @@ pub struct Shared {
     pub clients: Mutex<Vec<ClientTx>>,
     /// PTY 回调线程 → 分发任务。放在这里，避免在函数间传递。
     pub out: UnboundedSender<Out>,
+    /// spawn 时记下的元数据。`cwd`/`command` 供 `List` 回放 —— daemon 重启后
+    /// 靠它恢复终端标签；`generation` 用于识别陈旧的退出事件。
+    pub meta: Mutex<HashMap<String, TerminalMeta>>,
+    pub next_generation: AtomicU64,
+}
+
+/// 终端实例的元数据。含 generation 是因为：一个 id 可能被杀死后重生，
+/// 而旧实例的退出事件可能在新实例登记之后才被排空。
+#[derive(Clone)]
+pub struct TerminalMeta {
+    pub cwd: String,
+    pub command: String,
+    pub generation: u64,
 }
 
 impl Shared {
@@ -112,15 +126,27 @@ impl Shared {
             last_revert: Mutex::new(HashMap::new()),
             clients: Mutex::new(Vec::new()),
             out,
+            meta: Mutex::new(HashMap::new()),
+            next_generation: AtomicU64::new(1),
         });
         (sh, rx)
+    }
+
+    /// 该 id 当前登记的 generation 是否就是 `generation`。
+    /// 分发任务用它丢弃陈旧退出 —— 否则旧实例的退出会杀掉同 id 的新实例。
+    pub fn is_current(&self, id: &str, generation: u64) -> bool {
+        self.meta
+            .lock()
+            .unwrap()
+            .get(id)
+            .is_some_and(|m| m.generation == generation)
     }
 }
 
 /// 从 PTY 回调线程送往分发任务的事件。
 pub enum Out {
     Data(String, String), // (id, utf8 chunk)
-    Exit(String),         // id
+    Exit(String, u64),    // (id, generation)
 }
 
 fn spawn_terminal(
@@ -136,6 +162,11 @@ fn spawn_terminal(
         return Ok(());
     }
 
+    // 注意：上面这次检查与下面的 create_pty 之间存在窗口，同 id 的并发 Spawn 理论上
+    // 可以双双通过。此处假定其不可达 —— daemon 为每个终端生成唯一 id，且只维护一条
+    // 到本进程的连接，因此不会对同一 id 并发发起 Spawn。
+    let generation = sh.next_generation.fetch_add(1, Ordering::Relaxed);
+
     let id_data = id.to_string();
     let out_data = sh.out.clone();
     let id_exit = id.to_string();
@@ -150,7 +181,7 @@ fn spawn_terminal(
             let _ = out_data.send(Out::Data(id_data.clone(), data));
         },
         move || {
-            let _ = out_exit.send(Out::Exit(id_exit));
+            let _ = out_exit.send(Out::Exit(id_exit.clone(), generation));
         },
     )
     .map_err(|e| e.to_string())?;
@@ -159,6 +190,12 @@ fn spawn_terminal(
     // ScreenManager 的 create 签名是 (id, rows, cols) —— 注意顺序
     sh.screen.lock().unwrap().create(id, rows, cols);
     sh.buffers.lock().unwrap().create(id);
+    // 记下 cwd/command：List 要把它们回放给 daemon，否则 daemon 重启后
+    // 重连的终端会丢失标签与工作目录（daemon 那边只有本进程收到过这两个值）
+    sh.meta.lock().unwrap().insert(
+        id.to_string(),
+        TerminalMeta { cwd: cwd.to_string(), command: command.unwrap_or("").to_string(), generation },
+    );
     Ok(())
 }
 
@@ -168,6 +205,7 @@ fn kill_terminal(sh: &Arc<Shared>, id: &str) {
     sh.buffers.lock().unwrap().remove(id);
     sh.locks.lock().unwrap().remove(id);
     sh.last_revert.lock().unwrap().remove(id);
+    sh.meta.lock().unwrap().remove(id);
 }
 
 fn list_terminals(sh: &Arc<Shared>) -> Vec<PtyHostTerminalInfo> {
@@ -175,6 +213,7 @@ fn list_terminals(sh: &Arc<Shared>) -> Vec<PtyHostTerminalInfo> {
     // 否则与其它路径构成相反的加锁顺序就会死锁。
     let ids = sh.pty.lock().unwrap().list_ids();
     let locks = sh.locks.lock().unwrap().clone();
+    let meta = sh.meta.lock().unwrap().clone();
     ids.into_iter()
         .map(|id| {
             // 记录尺寸优先取锁定值；没有锁定时回退到屏幕解析器的尺寸
@@ -183,7 +222,12 @@ fn list_terminals(sh: &Arc<Shared>) -> Vec<PtyHostTerminalInfo> {
                 .copied()
                 .or_else(|| sh.screen.lock().unwrap().size_of(&id).map(|(r, c)| (c, r)))
                 .unwrap_or((80, 24));
-            PtyHostTerminalInfo { id: id.clone(), cwd: String::new(), command: String::new(), cols, rows }
+            // cwd/command 必须回放：daemon 重启后靠它们恢复终端标签与工作目录
+            let (cwd, command) = meta
+                .get(&id)
+                .map(|m| (m.cwd.clone(), m.command.clone()))
+                .unwrap_or_default();
+            PtyHostTerminalInfo { id: id.clone(), cwd, command, cols, rows }
         })
         .collect()
 }
