@@ -132,4 +132,3 @@ export function attachPaneToTree(
   }
   return insertSplit(root);
 }
-
