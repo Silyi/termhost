@@ -15,6 +15,7 @@ import { useSettingsStore } from "./store/settingsStore";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { useTerminalStore, terminalRefs, workspaceTrees, getTerminalIdsForWorkspace } from "./store/terminalStore";
 import { usePanelStore } from "./store/panelStore";
+import { detachTerminalFromLayout } from "./store/openTerminal";
 import { getHomeDir, killTerminal, resizeTerminal } from "./hooks/useTauriIpc";
 import { panesToTree, instantiateTree, splitPaneInTree, removePaneFromTree } from "./hooks/useSplitTree";
 
@@ -352,36 +353,21 @@ export default function App() {
   }, [bumpWsTreeVersion, setFocusedTerminalId, saveTree]);
 
   const handleClose = useCallback((id: string) => {
-    const wsIdx = useWorkspaceStore.getState().activeWorkspaceIdx;
-    const root = workspaceTrees.get(wsIdx);
-    if (!root) return;
     if (useTerminalStore.getState().zoomedTerminalId === id) {
       useTerminalStore.getState().toggleZoom(id);
     }
-    killTerminal(id).catch(() => {});
-    const newRoot = removePaneFromTree(root, id);
-    if (newRoot) {
-      workspaceTrees.set(wsIdx, newRoot);
-      bumpWsTreeVersion();
-      const ids = getTerminalIdsForWorkspace(wsIdx);
-      if (ids.length > 0) setFocusedTerminalId(ids[0]);
-      requestAnimationFrame(() => {
-        ids.forEach((tid) => {
-          const ref = terminalRefs.get(tid);
-          if (ref) ref.fitAddon.fit();
-        });
-        saveTree(wsIdx);
-      });
-    } else {
-      const ws = useWorkspaceStore.getState().workspaces[wsIdx];
-      const freshTree = panesToTree([{ cwd: ws?.panes?.[0]?.cwd || "", command: "" }]);
-      workspaceTrees.set(wsIdx, freshTree);
-      bumpWsTreeVersion();
-      const freshIds = getTerminalIdsForWorkspace(wsIdx);
-      if (freshIds.length > 0) setFocusedTerminalId(freshIds[0]);
-      requestAnimationFrame(() => saveTree(wsIdx));
-    }
-  }, [bumpWsTreeVersion, setFocusedTerminalId, saveTree, setActiveView]);
+    killTerminal(id).catch((e) => {
+      // 不能静默：杀失败时终端仍活在 daemon 里，之后又会在「所有终端」里冒出来。
+      console.error(`[关闭窗格] 杀掉终端 ${id} 失败:`, e);
+    });
+    // 只解除布局对这个终端的引用，别再自己维护树。
+    //
+    // 以前这里在「关掉最后一个窗格」时会用 panesToTree 造一个**新**窗格 —— 那个
+    // 新叶节点带着新 id 去 spawn 一个新终端，而标签是按目录算的（PS: <文件夹>），
+    // 新旧长得一模一样，于是看起来就像「× 没用，终端又回来了」。
+    // 现在最后一个窗格关掉就是关掉，工作区真的空下来（见 ensureWorkspaceTree）。
+    detachTerminalFromLayout(id);
+  }, []);
 
   // Listen for close-pane events from keyboard shortcuts
   useEffect(() => {

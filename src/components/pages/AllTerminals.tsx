@@ -177,7 +177,20 @@ export default function AllTerminals() {
                   style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4, padding: "3px 10px", color: "#fff", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
                   弹出
                 </button>
-                <button onClick={async (e) => { e.stopPropagation(); await killTerminal(t.id); refresh(); }}
+                <button onClick={async (e) => {
+                  e.stopPropagation();
+                  setActionError(null);
+                  try {
+                    await killTerminal(t.id);
+                    // 光杀 daemon 里的终端不够：布局里若还有它的窗格，窗格一重新
+                    // 挂载就会按同一个 id 再 spawn 一个 —— 看起来就是「终止没用，
+                    // 刷新一下又回来了」。
+                    detachTerminalFromLayout(t.id);
+                    refresh();
+                  } catch (err) {
+                    setActionError(`终止终端失败：${String(err)}`);
+                  }
+                }}
                   style={{ background: "rgba(224,80,80,0.1)", border: "1px solid rgba(224,80,80,0.2)", borderRadius: 4, padding: "3px 10px", color: "#e05050", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
                   终止
                 </button>
