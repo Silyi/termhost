@@ -172,9 +172,8 @@ fn spawn_terminal(
         return Ok(());
     }
 
-    // 注意：上面这次检查与下面的 create_pty 之间存在窗口，同 id 的并发 Spawn 理论上
-    // 可以双双通过。此处假定其不可达 —— daemon 为每个终端生成唯一 id，且只维护一条
-    // 到本进程的连接，因此不会对同一 id 并发发起 Spawn。
+    // 同 id 的并发 Spawn 已被上面的 lifecycle 锁串行化 —— 第二个进来时 has(id) 已为真，
+    // 直接走幂等分支返回。此处不再依赖"daemon 不会并发发起"这类外部假设。
     let generation = sh.next_generation.fetch_add(1, Ordering::Relaxed);
 
     let id_data = id.to_string();
