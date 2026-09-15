@@ -12,7 +12,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: auto;
+  min-width: 36px;
+  padding: 0 6px;
   background: none;
   border: none;
   border-right: 1px solid var(--border);
@@ -134,7 +136,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  width: auto;
+  min-width: 32px;
+  padding: 0 6px;
   background: none;
   border: none;
   border-right: 1px solid var(--border);
