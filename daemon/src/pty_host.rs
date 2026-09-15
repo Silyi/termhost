@@ -103,6 +103,10 @@ pub struct Shared {
     /// 靠它恢复终端标签；`generation` 用于识别陈旧的退出事件。
     pub meta: Mutex<HashMap<String, TerminalMeta>>,
     pub next_generation: AtomicU64,
+    /// 串行化 spawn 与 kill。子进程可能在 `create_pty` 返回**之前**就退出，它的
+    /// `Out::Exit` 会与登记过程赛跑：若退出先被分发任务处理，登记随后才完成，
+    /// 就会留下一个已死却被登记着的终端。持这把锁可保证"登记"与"拆除"不交错。
+    pub lifecycle: Mutex<()>,
 }
 
 /// 终端实例的元数据。含 generation 是因为：一个 id 可能被杀死后重生，
@@ -128,6 +132,7 @@ impl Shared {
             out,
             meta: Mutex::new(HashMap::new()),
             next_generation: AtomicU64::new(1),
+            lifecycle: Mutex::new(()),
         });
         (sh, rx)
     }
@@ -157,6 +162,11 @@ fn spawn_terminal(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
+    // 全程持 lifecycle：从幂等检查一路到 meta 落库，中间不允许任何拆除动作插进来。
+    // 否则一个瞬间退出的子进程，其 Out::Exit 会在 meta 写入前被处理，
+    // is_current 把这次合法退出误判为陈旧事件丢弃，留下已死却仍被登记的终端。
+    let _life = sh.lifecycle.lock().unwrap();
+
     // 幂等：同 id 已存在就直接成功（daemon 重连后会重新 Spawn 自己的终端）
     if sh.pty.lock().unwrap().has(id) {
         return Ok(());
@@ -199,13 +209,32 @@ fn spawn_terminal(
     Ok(())
 }
 
-fn kill_terminal(sh: &Arc<Shared>, id: &str) {
+/// 真正的拆除动作。**调用方必须已持有 `lifecycle`。**
+fn kill_locked(sh: &Arc<Shared>, id: &str) {
     sh.pty.lock().unwrap().kill(id); // drop master 即关闭 ConPTY，子进程随之结束
     sh.screen.lock().unwrap().remove(id);
     sh.buffers.lock().unwrap().remove(id);
     sh.locks.lock().unwrap().remove(id);
     sh.last_revert.lock().unwrap().remove(id);
     sh.meta.lock().unwrap().remove(id);
+}
+
+/// 显式 `Kill` 请求用：无条件拆除。对未知 id 是幂等空操作。
+fn kill_terminal(sh: &Arc<Shared>, id: &str) {
+    let _life = sh.lifecycle.lock().unwrap();
+    kill_locked(sh, id);
+}
+
+/// 分发任务用：**仅当登记代际未变时**才拆除。
+/// 校验与拆除在同一把 lifecycle 锁内完成 —— 否则两者之间可能插进一次
+/// 同 id 的 spawn，让陈旧退出杀掉新实例。返回是否真的拆除了。
+fn kill_if_current(sh: &Arc<Shared>, id: &str, generation: u64) -> bool {
+    let _life = sh.lifecycle.lock().unwrap();
+    if !sh.is_current(id, generation) {
+        return false;
+    }
+    kill_locked(sh, id);
+    true
 }
 
 fn list_terminals(sh: &Arc<Shared>) -> Vec<PtyHostTerminalInfo> {
